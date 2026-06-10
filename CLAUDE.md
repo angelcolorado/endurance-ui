@@ -26,6 +26,8 @@ Consume servicios de una arquitectura de microservicios (API Gateway) mediante H
 6. **Inmutabilidad:** Trata siempre los datos que provienen de las APIs como inmutables.
 7. **Nombres:** Componentes en `kebab-case` para archivos, `PascalCase` para clases.
 8. **Idioma:** Todo el código fuente, HTML, comentarios y mensajes de commit deben estar en **inglés**.
+9. **Testing (TDD):** Todo Servicio (`.service.ts`) y Componente de negocio DEBE entregarse siempre junto con su archivo de pruebas unitarias (`.spec.ts`) configurado con `TestBed`. 
+10. **Requerimientos No Funcionales (NFRs):** El HTML generado debe cumplir con accesibilidad básica (a11y): etiquetas `aria-label`, asociación correcta de `labels` para formularios y navegación completa por teclado (`Tab`/`Enter`).
 
 ## ⚡ Comandos Automatizados (SOPs)
 
@@ -33,8 +35,9 @@ Consume servicios de una arquitectura de microservicios (API Gateway) mediante H
 Al recibir este comando, debes realizar el proceso de cierre de la tarea actual en el frontend:
 1. **Auditoría de Rutas:** Revisa si se agregaron nuevas páginas y confirma que estén registradas correctamente mediante *Lazy Loading* (`loadComponent`) en `app.routes.ts`.
 2. **Documentación:** Actualiza el archivo `README.md` en la raíz del proyecto. Describe las nuevas interfaces de usuario desarrolladas, la estructura de rutas, los servicios consumidos del API Gateway y cualquier decisión relevante sobre Tailwind CSS o el manejo del estado.
-3. **Commit Maestro:**
+3. **Auditoría de Calidad (Quality Gate):** Verifica que los archivos `.spec.ts` hayan sido creados/actualizados para el código modificado y confirma que el HTML cumple con los estándares de accesibilidad estipulados en las reglas.
+4. **Commit Maestro:**
     - Analiza los cambios en el *staging area* y el nombre de la rama actual (`git branch --show-current`).
     - Genera el mensaje usando *Conventional Commits* adaptado a UI.
     - **Regla estricta:** El prefijo del commit (`feat`, `fix`, `ui`, `style`) DEBE coincidir con el prefijo o la intención de la rama actual. Si la rama es `feat/login-page`, el commit debe ser `feat(auth): ...`.
-4. **Salida Final:** Imprime los bloques de código necesarios para sobrescribir el `README.md`, agrega cualquier sugerencia final de refactorización visual y entrega el comando de bash `git commit ...` listo para ejecutar.
+5. **Salida Final:** Imprime los bloques de código necesarios para sobrescribir el `README.md`, agrega cualquier sugerencia final de refactorización visual y entrega el comando de bash `git commit ...` listo para ejecutar.

@@ -1,9 +1,9 @@
 <div class="min-h-screen bg-slate-900 flex items-center justify-center px-4">
   <div class="w-full max-w-md">
 
-    <!-- Logo / Brand -->
+    <!-- Brand -->
     <div class="text-center mb-8">
-      <span class="text-4xl font-black tracking-widest text-white uppercase">
+      <span class="text-4xl font-black tracking-widest text-white uppercase" aria-label="EnduranceOps">
         Endurance<span class="text-blue-500">Ops</span>
       </span>
       <p class="mt-2 text-slate-400 text-sm tracking-wide uppercase">
@@ -14,9 +14,15 @@
     <!-- Card -->
     <div class="bg-slate-800 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 p-8">
 
-      <h2 class="text-xl font-semibold text-white mb-6">Iniciar Sesión</h2>
+      <h1 class="text-xl font-semibold text-white mb-6">Iniciar Sesión</h1>
 
-      <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" novalidate class="space-y-5">
+      <form
+        [formGroup]="loginForm"
+        (ngSubmit)="onSubmit()"
+        novalidate
+        aria-label="Login form"
+        class="space-y-5"
+      >
 
         <!-- Email -->
         <div>
@@ -29,19 +35,26 @@
             formControlName="email"
             autocomplete="email"
             placeholder="atleta@enduranceops.com"
+            aria-required="true"
+            [attr.aria-invalid]="loginForm.get('email')?.invalid && loginForm.get('email')?.touched ? 'true' : null"
+            aria-describedby="email-error"
             class="w-full bg-slate-900 text-white placeholder-slate-500 border border-slate-600 rounded-lg px-4 py-2.5 text-sm
                    transition-colors duration-200 outline-none
                    focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
           />
-          @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
-            <p class="mt-1.5 text-xs text-red-400">
+          <p
+            id="email-error"
+            role="alert"
+            class="mt-1.5 text-xs text-red-400 min-h-[1rem]"
+          >
+            @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
               @if (loginForm.get('email')?.hasError('required')) {
                 El correo es obligatorio.
               } @else if (loginForm.get('email')?.hasError('email')) {
                 Introduce un correo válido.
               }
-            </p>
-          }
+            }
+          </p>
         </div>
 
         <!-- Password -->
@@ -55,25 +68,36 @@
             formControlName="password"
             autocomplete="current-password"
             placeholder="••••••••"
+            aria-required="true"
+            [attr.aria-invalid]="loginForm.get('password')?.invalid && loginForm.get('password')?.touched ? 'true' : null"
+            aria-describedby="password-error"
             class="w-full bg-slate-900 text-white placeholder-slate-500 border border-slate-600 rounded-lg px-4 py-2.5 text-sm
                    transition-colors duration-200 outline-none
                    focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
           />
-          @if (loginForm.get('password')?.invalid && loginForm.get('password')?.touched) {
-            <p class="mt-1.5 text-xs text-red-400">
+          <p
+            id="password-error"
+            role="alert"
+            class="mt-1.5 text-xs text-red-400 min-h-[1rem]"
+          >
+            @if (loginForm.get('password')?.invalid && loginForm.get('password')?.touched) {
               @if (loginForm.get('password')?.hasError('required')) {
                 La contraseña es obligatoria.
               } @else if (loginForm.get('password')?.hasError('minlength')) {
                 Mínimo 6 caracteres.
               }
-            </p>
-          }
+            }
+          </p>
         </div>
 
         <!-- API error banner -->
         @if (hasError()) {
-          <div class="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3">
-            <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <div
+            role="alert"
+            aria-live="assertive"
+            class="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3"
+          >
+            <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             </svg>
             <p class="text-sm text-red-400">Credenciales incorrectas. Inténtalo de nuevo.</p>
@@ -84,13 +108,15 @@
         <button
           type="submit"
           [disabled]="loginForm.invalid || isLoading()"
+          [attr.aria-busy]="isLoading()"
+          aria-label="Iniciar sesión en EnduranceOps"
           class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700
                  text-white font-semibold rounded-lg px-4 py-2.5 text-sm
                  transition-all duration-200 mt-2
                  disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
         >
           @if (isLoading()) {
-            <svg class="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" aria-hidden="true">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
