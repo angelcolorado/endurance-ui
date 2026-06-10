@@ -4,7 +4,6 @@ export interface LoginRequest {
 }
 
 export interface AuthResponse {
-  token: string;
-  expiresIn: number;
-  role: string;
+  accessToken: string;
+  refreshToken: number;
 }

@@ -29,11 +29,11 @@ Artifacts land in `dist/`. Production build is optimized by default.
 
 ## Route Map
 
-| Path | Component | Strategy |
-|---|---|---|
-| `/` | — | Redirects to `/login` |
-| `/login` | `LoginComponent` | Lazy (`loadComponent`) |
-| `/dashboard` | `DashboardComponent` | Lazy (`loadComponent`) |
+| Path | Component | Guard | Strategy |
+|---|---|---|---|
+| `/` | — | — | Redirects to `/login` |
+| `/login` | `LoginComponent` | — | Lazy (`loadComponent`) |
+| `/dashboard` | `DashboardComponent` | `authGuard` | Lazy (`loadComponent`) |
 
 ## Feature: Auth / Login (`src/app/features/auth/login/`)
 
@@ -50,13 +50,20 @@ WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all i
 
 **API Gateway base:** `http://localhost:8080`
 
+## Security Infrastructure (`src/app/core/`)
+
+| Artifact | Type | Responsibility |
+|---|---|---|
+| `authGuard` | `CanActivateFn` | Blocks unauthenticated access; passes through on SSR to avoid premature redirect |
+| `jwtInterceptor` | `HttpInterceptorFn` | Injects `Authorization: Bearer` on every request; calls `logout()` on 401 |
+
 ## Testing
 
 ```bash
 ng test
 ```
 
-Unit tests use Vitest + `HttpTestingController`. Coverage: `AuthService` (init, login, logout).
+Unit tests use Vitest + `HttpTestingController`. Coverage: `AuthService` (init, login, logout), `authGuard` (browser + SSR platforms), `jwtInterceptor` (header injection, 401 handling).
 
 ## Key Architectural Decisions
 
@@ -66,3 +73,5 @@ Unit tests use Vitest + `HttpTestingController`. Coverage: `AuthService` (init, 
 - All component `.css` files are empty; layout is 100% Tailwind utility classes.
 - `isPlatformBrowser(PLATFORM_ID)` guards all `localStorage` access — safe for SSR server bundle.
 - `AuthService` owns `logout()` navigation to `/login` — guards and interceptors call one place.
+- `authGuard` returns `true` on `isPlatformServer` — prevents SSR from redirecting before browser hydration reads `localStorage`.
+- `jwtInterceptor` registered via `withInterceptors([])` (functional API) — compatible with `withFetch()` and tree-shakeable.

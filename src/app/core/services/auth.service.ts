@@ -21,11 +21,15 @@ export class AuthService {
   );
   readonly isLoggedIn$ = this._isLoggedIn$.asObservable();
 
+  get isAuthenticated(): boolean {
+    return this._isLoggedIn$.getValue();
+  }
+
   login(credentials: LoginRequest): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(this.apiUrl, credentials).pipe(
       tap((response) => {
         if (isPlatformBrowser(this.platformId)) {
-          localStorage.setItem(TOKEN_KEY, response.token);
+          localStorage.setItem(TOKEN_KEY, response.accessToken);
         }
         this._isLoggedIn$.next(true);
       })
