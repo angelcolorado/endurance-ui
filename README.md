@@ -1,59 +1,56 @@
-# EnduranceUi
+# EnduranceOps UI
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.14.
+Angular 21 SPA — micro-frontend client for the EnduranceOps race logistics platform.
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Angular 21 (Standalone Components, SSR) |
+| Styling | Tailwind CSS v3 |
+| Reactivity | RxJS · Angular Signals |
+| Language | TypeScript 5.x (strict mode) |
 
 ## Development server
-
-To start a local development server, run:
 
 ```bash
 ng serve
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Navigate to `http://localhost:4200/`. Hot reload enabled.
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
+## Build
 
 ```bash
 ng build
 ```
 
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
+Artifacts land in `dist/`. Production build is optimized by default.
 
-## Running unit tests
+## Route Map
 
-To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
+| Path | Component | Strategy |
+|---|---|---|
+| `/` | — | Redirects to `/login` |
+| `/login` | `LoginComponent` | Lazy (`loadComponent`) |
+| `/dashboard` | `DashboardComponent` | Lazy (`loadComponent`) |
 
-```bash
-ng test
-```
+## Feature: Auth / Login (`src/app/features/auth/login/`)
 
-## Running end-to-end tests
+Dark-sport UI. Reactive form with strict validators (`Validators.email`, `Validators.minLength(6)`).
+On successful login, redirects to `/dashboard`. API error surfaces via `hasError` signal.
 
-For end-to-end (e2e) testing, run:
+## Core Services (`src/app/core/`)
 
-```bash
-ng e2e
-```
+| Service | Endpoint | Responsibility |
+|---|---|---|
+| `AuthService` | `POST /api/v1/auth/login` | Authenticates user, maintains `isLoggedIn$` BehaviorSubject |
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+**API Gateway base:** `http://localhost:8080`
 
-## Additional Resources
+## Key Architectural Decisions
 
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+- `inject()` over constructor injection throughout — aligns with Angular 14+ functional DI style.
+- `signal()` for synchronous component state (`isLoading`, `hasError`); RxJS only for async streams.
+- `provideHttpClient(withFetch())` — fetch-based HTTP adapter, required for SSR hydration compatibility.
+- All component `.css` files are empty; layout is 100% Tailwind utility classes.
