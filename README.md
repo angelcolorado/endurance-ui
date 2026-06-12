@@ -43,7 +43,7 @@ Authenticated routes are nested under `MainLayoutComponent`, which acts as the p
 AppRoutes
 ├── /login          → LoginComponent          (public)
 └── ''  [authGuard] → MainLayoutComponent     (protected shell)
-        └── /dashboard → DashboardComponent
+        └── /dashboard → DashboardComponent  (logistics command center)
 ```
 
 ## Feature: Application Shell (`src/app/core/layout/main-layout/`)
@@ -62,6 +62,35 @@ Full-viewport dashboard layout (`h-screen overflow-hidden flex`) with three zone
 
 **Content area** (`flex-1 overflow-y-auto p-6 bg-slate-950`)
 - Houses `<router-outlet>` for all child routes.
+
+## Feature: Dashboard — Logistics Command Center (`src/app/features/dashboard/`)
+
+Signal-driven operations overview. No services or HTTP calls — state is initialized from typed mock signals and will be replaced with real API calls in a future sprint.
+
+**Metrics grid** (`grid-cols-1 md:grid-cols-2 lg:grid-cols-4`)
+
+| Metric | Mock Value |
+|---|---|
+| Registered Athletes | 12,450 |
+| Active Waves | 8 Waves |
+| Corral Capacity | 94% |
+| Assigned Pacers | 45 |
+
+Each card renders: title, value (`text-3xl tabular-nums`), trend arrow (emerald = up, red = down), and a color-accented icon.
+
+**Upcoming Events table**
+
+Columns: Event name · Date · Athletes (formatted with `DecimalPipe`) · Logistics status badge.
+
+Badge color coding:
+
+| Status | Color |
+|---|---|
+| Approved | Emerald |
+| Under Review | Amber |
+| Pending | Slate |
+
+**Interfaces exported:** `SummaryMetric`, `UpcomingEvent`, `LogisticsStatus` — available for reuse when connecting to real API data.
 
 ## Feature: Auth / Login (`src/app/features/auth/login/`)
 
@@ -109,6 +138,7 @@ Unit tests use Vitest + `HttpTestingController`.
 | `jwt.interceptor.spec.ts` | header injection, 401 auto-logout |
 | `login.component.spec.ts` | form validation, navigation, all HTTP error branches |
 | `main-layout.component.spec.ts` | logo render, nav labels, active state, logout delegation, router-outlet |
+| `dashboard.component.spec.ts` | metric count, titles/values, trend colors, badge classes, signal reactivity, a11y |
 
 ## Key Architectural Decisions
 
@@ -121,3 +151,5 @@ Unit tests use Vitest + `HttpTestingController`.
 - `authGuard` returns `true` on `isPlatformServer` — prevents SSR from redirecting before browser hydration reads `localStorage`.
 - `jwtInterceptor` registered via `withInterceptors([])` (functional API) — compatible with `withFetch()` and tree-shakeable.
 - `authGuard` placed at the layout shell level, not on individual child routes — single point of protection for the entire authenticated surface.
+- Dashboard state initialized as typed `signal<SummaryMetric[]>` / `signal<UpcomingEvent[]>` — swapping in real HTTP data requires only replacing the initial value, no template changes.
+- `getBadgeClasses()` is a pure method with no DOM access — directly unit-testable without `fixture.detectChanges()`.
