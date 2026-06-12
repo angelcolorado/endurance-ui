@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
 
@@ -21,13 +22,13 @@ export class LoginComponent {
   });
 
   readonly isLoading = signal(false);
-  readonly hasError = signal(false);
+  readonly errorMessage = signal<string | null>(null);
 
   onSubmit(): void {
     if (this.loginForm.invalid) return;
 
     this.isLoading.set(true);
-    this.hasError.set(false);
+    this.errorMessage.set(null);
 
     const { email, password } = this.loginForm.getRawValue();
 
@@ -36,10 +37,26 @@ export class LoginComponent {
         this.isLoading.set(false);
         this.router.navigate(['/dashboard']);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.isLoading.set(false);
-        this.hasError.set(true);
+        this.errorMessage.set(this.resolveErrorMessage(err));
       },
     });
+  }
+
+  private resolveErrorMessage(err: unknown): string {
+    if (!(err instanceof HttpErrorResponse)) {
+      return 'An unexpected error occurred.';
+    }
+    if (err.status === 0) {
+      return 'Cannot reach the server. Please try again later.';
+    }
+    if (err.status === 401 || err.status === 403) {
+      return 'Invalid credentials. Please try again.';
+    }
+    if (err.status >= 500) {
+      return 'The system is under maintenance. Please try again later.';
+    }
+    return 'An unexpected error occurred.';
   }
 }

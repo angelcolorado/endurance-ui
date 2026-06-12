@@ -14,7 +14,7 @@
     <!-- Card -->
     <div class="bg-slate-800 rounded-2xl shadow-2xl shadow-black/50 border border-slate-700 p-8">
 
-      <h1 class="text-xl font-semibold text-white mb-6">Iniciar Sesión</h1>
+      <h1 class="text-xl font-semibold text-white mb-6">Sign In</h1>
 
       <form
         [formGroup]="loginForm"
@@ -27,7 +27,7 @@
         <!-- Email -->
         <div>
           <label for="email" class="block text-sm font-medium text-slate-300 mb-1.5">
-            Correo electrónico
+            Email
           </label>
           <input
             id="email"
@@ -49,9 +49,9 @@
           >
             @if (loginForm.get('email')?.invalid && loginForm.get('email')?.touched) {
               @if (loginForm.get('email')?.hasError('required')) {
-                El correo es obligatorio.
+                Email is required.
               } @else if (loginForm.get('email')?.hasError('email')) {
-                Introduce un correo válido.
+                Enter a valid email address.
               }
             }
           </p>
@@ -60,7 +60,7 @@
         <!-- Password -->
         <div>
           <label for="password" class="block text-sm font-medium text-slate-300 mb-1.5">
-            Contraseña
+            Password
           </label>
           <input
             id="password"
@@ -82,16 +82,16 @@
           >
             @if (loginForm.get('password')?.invalid && loginForm.get('password')?.touched) {
               @if (loginForm.get('password')?.hasError('required')) {
-                La contraseña es obligatoria.
+                Password is required.
               } @else if (loginForm.get('password')?.hasError('minlength')) {
-                Mínimo 6 caracteres.
+                Minimum 6 characters.
               }
             }
           </p>
         </div>
 
         <!-- API error banner -->
-        @if (hasError()) {
+        @if (errorMessage()) {
           <div
             role="alert"
             aria-live="assertive"
@@ -100,7 +100,7 @@
             <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             </svg>
-            <p class="text-sm text-red-400">Credenciales incorrectas. Inténtalo de nuevo.</p>
+            <p class="text-sm text-red-400">{{ errorMessage() }}</p>
           </div>
         }
 
@@ -109,7 +109,7 @@
           type="submit"
           [disabled]="loginForm.invalid || isLoading()"
           [attr.aria-busy]="isLoading()"
-          aria-label="Iniciar sesión en EnduranceOps"
+          aria-label="Sign in to EnduranceOps"
           class="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700
                  text-white font-semibold rounded-lg px-4 py-2.5 text-sm
                  transition-all duration-200 mt-2
@@ -120,9 +120,9 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            Verificando...
+            Verifying...
           } @else {
-            Iniciar Sesión
+            Sign In
           }
         </button>
 
