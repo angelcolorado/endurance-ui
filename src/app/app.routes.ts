@@ -29,6 +29,13 @@ export const routes: Routes = [
             (m) => m.DashboardComponent
           ),
       },
+      {
+        path: 'events',
+        loadComponent: () =>
+          import('./features/events/pages/event-list/event-list.component').then(
+            (m) => m.EventListComponent
+          ),
+      },
     ],
   },
 ];

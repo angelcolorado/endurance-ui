@@ -1,0 +1,141 @@
+<div class="bg-slate-800 border border-slate-700/60 rounded-xl overflow-hidden">
+
+  <!-- Toolbar — always visible -->
+  <div class="px-6 py-4 border-b border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div>
+      <h2 class="text-base font-semibold text-white">Race Events</h2>
+      <p class="text-xs text-slate-500 mt-0.5">{{ eventsPage().total }} events found</p>
+    </div>
+
+    <!-- Search — never destroyed, debounce is handled in TS -->
+    <div class="relative w-full sm:w-72">
+      <svg
+        class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none"
+        fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+      </svg>
+      <input
+        type="search"
+        role="searchbox"
+        aria-label="Search events by name"
+        placeholder="Search events…"
+        [value]="searchValue()"
+        (input)="onSearch($event)"
+        class="w-full bg-slate-900 text-white placeholder-slate-500 border border-slate-600 rounded-lg
+               pl-10 pr-4 py-2 text-sm outline-none transition-colors
+               focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+      />
+    </div>
+  </div>
+
+  <!-- Table — header always visible, only tbody swaps -->
+  <div class="overflow-x-auto" [attr.aria-busy]="isLoading()" [attr.aria-live]="'polite'">
+    <table class="w-full text-sm" aria-label="Race events list">
+      <thead>
+        <tr class="border-b border-slate-700/40">
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Event</th>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+          <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Athletes</th>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        @if (isLoading()) {
+          <!-- Skeleton rows replace real rows during load — toolbar and headers stay put -->
+          @for (row of [1, 2, 3, 4, 5]; track row) {
+            <tr class="border-b border-slate-700/40 last:border-0">
+              <td class="px-6 py-4"><div class="h-4 w-48 bg-slate-700 rounded animate-pulse"></div></td>
+              <td class="px-6 py-4"><div class="h-4 w-24 bg-slate-700/70 rounded animate-pulse"></div></td>
+              <td class="px-6 py-4 text-right"><div class="h-4 w-16 bg-slate-700/70 rounded animate-pulse ml-auto"></div></td>
+              <td class="px-6 py-4"><div class="h-5 w-20 bg-slate-700/60 rounded-full animate-pulse"></div></td>
+            </tr>
+          }
+        } @else {
+          @if (eventsPage().data.length === 0) {
+            <tr>
+              <td colspan="4" class="px-6 py-16 text-center text-slate-500 text-sm">
+                No events match your search.
+              </td>
+            </tr>
+          }
+          @for (event of eventsPage().data; track event.id; let last = $last) {
+            <tr
+              class="hover:bg-slate-700/30 transition-colors duration-100"
+              [class.border-b]="!last"
+              [class.border-slate-700/40]="!last"
+            >
+              <td class="px-6 py-4 font-medium text-white">{{ event.name }}</td>
+              <td class="px-6 py-4 text-slate-400 whitespace-nowrap">{{ event.date }}</td>
+              <td class="px-6 py-4 text-right text-slate-300 tabular-nums font-medium">
+                {{ event.registeredAthletes | number }}
+              </td>
+              <td class="px-6 py-4">
+                <span [class]="getStatusClasses(event.status)">{{ event.status }}</span>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination — only shown when data is loaded and there are multiple pages -->
+  @if (!isLoading() && totalPages() > 1) {
+    <div
+      class="px-6 py-4 border-t border-slate-700/60 flex flex-col sm:flex-row items-center justify-between gap-3"
+      role="navigation"
+      aria-label="Pagination"
+    >
+      <p class="text-xs text-slate-500">
+        Page <span class="text-slate-300 font-medium">{{ eventsPage().page }}</span>
+        of <span class="text-slate-300 font-medium">{{ totalPages() }}</span>
+      </p>
+
+      <div class="flex items-center gap-1.5">
+        <button
+          type="button"
+          (click)="onPageChange(eventsPage().page - 1)"
+          [disabled]="eventsPage().page === 1"
+          aria-label="Previous page"
+          class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400
+                 hover:bg-slate-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed
+                 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+          </svg>
+        </button>
+
+        @for (p of pageNumbers(); track p) {
+          <button
+            type="button"
+            (click)="onPageChange(p)"
+            [attr.aria-label]="'Page ' + p"
+            [attr.aria-current]="p === eventsPage().page ? 'page' : null"
+            [class]="getPaginationBtnClasses(p)"
+          >
+            {{ p }}
+          </button>
+        }
+
+        <button
+          type="button"
+          (click)="onPageChange(eventsPage().page + 1)"
+          [disabled]="eventsPage().page === totalPages()"
+          aria-label="Next page"
+          class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400
+                 hover:bg-slate-700 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed
+                 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  }
+
+</div>

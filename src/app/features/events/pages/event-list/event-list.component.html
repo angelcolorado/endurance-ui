@@ -1,0 +1,18 @@
+<div class="space-y-6">
+
+  <!-- Header -->
+  <div>
+    <h1 class="text-2xl font-bold text-white tracking-tight">Events</h1>
+    <p class="mt-1 text-sm text-slate-400">Browse and manage all race events</p>
+  </div>
+
+  <!-- Table is always present; isLoading is passed down so only tbody swaps -->
+  <app-event-table
+    [eventsPage]="eventsPage()"
+    [searchValue]="searchTerm()"
+    [isLoading]="isLoading()"
+    (pageChange)="onPageChange($event)"
+    (searchChange)="onSearchChange($event)"
+  />
+
+</div>
