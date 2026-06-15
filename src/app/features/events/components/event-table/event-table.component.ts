@@ -1,5 +1,6 @@
-import { Component, OnInit, inject, input, output } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -12,7 +13,7 @@ export interface PageChangeEvent {
 @Component({
   selector: 'app-event-table',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, RouterLink],
   templateUrl: './event-table.component.html',
 })
 export class EventTableComponent {

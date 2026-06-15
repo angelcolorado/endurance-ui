@@ -36,6 +36,13 @@ export const routes: Routes = [
             (m) => m.EventListComponent
           ),
       },
+      {
+        path: 'events/new',
+        loadComponent: () =>
+          import('./features/events/pages/event-create/event-create.component').then(
+            (m) => m.EventCreateComponent
+          ),
+      },
     ],
   },
 ];

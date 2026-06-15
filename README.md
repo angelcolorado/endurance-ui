@@ -41,15 +41,90 @@ Authenticated routes are nested under `MainLayoutComponent`, which acts as the p
 
 ```
 AppRoutes
-├── /login          → LoginComponent          (public)
-└── ''  [authGuard] → MainLayoutComponent     (protected shell)
-        ├── /dashboard → DashboardComponent  (logistics command center)
-        └── /events    → EventListComponent  (Smart) → EventTableComponent (Presentational)
+├── /login           → LoginComponent          (public)
+└── ''  [authGuard]  → MainLayoutComponent     (protected shell)
+        ├── /dashboard   → DashboardComponent
+        ├── /events      → EventListComponent  (Smart) → EventTableComponent (Presentational)
+        └── /events/new  → EventCreateComponent
 ```
+
+## Feature: Event Create Form (`src/app/features/events/pages/event-create/`)
+
+Multipart form that submits a new race catalog entry to `POST /api/v1/catalog/events`.
+
+### Architecture
+
+`EventCreateComponent` is a single Smart component (no Presentational split — this is a form, not a data list). It owns:
+
+- **`ReactiveFormsModule`** with strict typing via `FormBuilder`.
+- **`FormArray` for Offerings** — dynamic rows (add / remove). Each row holds `distance` (enum select), `modality` (enum select), and `teamSize` (number).
+- **`FormArray` for Tiers** — single pre-populated row (`Early Bird`).
+- **`futureDateValidator`** — custom `ValidatorFn` that rejects past dates; appends `T00:00:00` before parsing to neutralize UTC timezone shift.
+
+### API contract (`EventService.createCatalogEntry`)
+
+Sends `multipart/form-data` with two parts:
+
+| Part | Content-Type | Value |
+|---|---|---|
+| `document` | `application/pdf` | File selected by the user |
+| `data` | `application/json` | JSON body (see below) |
+
+`Content-Type` is **never set manually** — the browser must append the multipart boundary automatically. `documentVersion` is injected as `'1.0'` inside the service via an immutable spread before `JSON.stringify`.
+
+### Offerings — enum values
+
+| Field | Type | Values |
+|---|---|---|
+| `distance` | `DistanceCategory` | `FIVE_K` · `TEN_K` · `HALF_MARATHON` · `MARATHON` · `ULTRA` |
+| `modality` | `OfferingModality` | `INDIVIDUAL` · `RELAY` |
+| `teamSize` | `number` | min 1 |
+
+### Form fields
+
+| Field | Validators |
+|---|---|
+| `name` | required, minLength(5) |
+| `description` | required |
+| `raceDate` | required, futureDateValidator |
+| `city` | required |
+| `issuingAuthority` | required |
+| `convocatoriaPublicationDate` | required |
+| `offerings[].distance` | required |
+| `offerings[].modality` | required |
+| `offerings[].teamSize` | required, min(1) |
+| `tiers[].name/startDate/endDate` | required |
+| `tiers[].price` | required, min(0) |
+
+### UX decisions
+
+- File upload uses a `<button>` + `#fileInput` template reference with `class="hidden"` — avoids the `sr-only` scroll-jump bug (absolute-positioned inputs cause the scroll container to jump when focused before the OS file picker opens).
+- Global scroll fix: `html, body { height: 100%; overflow: hidden }` + `app-root { display: block; height: 100% }` in `styles.css` ensures `<main>` is the sole scroll surface — eliminates the blank strip visible at the bottom of long forms.
+- Layout shell uses `h-full` instead of `h-screen` — stable against OS dialog viewport changes.
+- Submit button is `disabled` until `form.valid && selectedFile` — no silent empty submissions.
+
+### Testing (`event-create.component.spec.ts`)
+
+| Test group | Cases |
+|---|---|
+| `futureDateValidator` | empty, today, future, past |
+| Enum constants | `DISTANCE_CATEGORIES` (5 values), `OFFERING_MODALITIES` (2 values) |
+| FormArray init | offerings defaults, tiers defaults |
+| `addOffering` / `removeOffering` | append, remove by index, guard last row |
+| Name validators | required, minLength |
+| `raceDate` validators | required, pastDate, future |
+| `onFileSelected` | sets file, clears error, sets error on empty |
+| `onSubmit` guards | invalid form, valid form but no file |
+| HTTP happy path | POST, no manual Content-Type, FormData body, navigate to `/events` |
+| HTTP error | sets `submitError` signal |
+| `isLoading` lifecycle | true during request, false after flush |
+| DOM: submit button | disabled (invalid), disabled (no file), enabled (valid + file) |
+
+---
 
 ## Feature: Application Shell (`src/app/core/layout/main-layout/`)
 
-Full-viewport dashboard layout (`h-screen overflow-hidden flex`) with three zones:
+Full-viewport dashboard layout (`h-full overflow-hidden flex`) with three zones:
 
 **Sidebar** (`w-64 bg-slate-900`)
 - EnduranceOps wordmark logo.
@@ -179,6 +254,7 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event.service.spec.ts` | pagination, search filter, whitespace trim, empty results, 800ms delay |
 | `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce (299ms/300ms), collapse, distinctUntilChanged, badge classes, pagination guards |
 | `event-list.component.spec.ts` | init call, skeleton visible, table visible post-load, isLoading state, search reset, page change |
+| `event-create.component.spec.ts` | futureDateValidator, enum constants, FormArray init, add/remove offering, validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state |
 
 ## Key Architectural Decisions
 
@@ -196,3 +272,6 @@ Unit tests use Vitest + `HttpTestingController`.
 - `EventTableComponent` receives `isLoading` as an `input()` and swaps only the `<tbody>` — the `<input>` and `<thead>` survive every loading cycle, preventing focus loss on search.
 - Search debounce lives entirely in the Presentational component (`Subject` + `debounceTime(300)` + `distinctUntilChanged` + `takeUntilDestroyed`) — the Smart component never sees raw keystrokes.
 - `switchMap` in `EventListComponent` cancels stale requests automatically; no explicit unsubscribe needed.
+- `EventService.createCatalogEntry` accepts `Record<string, unknown>` and spreads `documentVersion: '1.0'` immutably before serializing — the form never holds a field that the user shouldn't control.
+- File upload trigger uses `fileInput.click()` on a `display:none` input rather than the `sr-only` label trick — `sr-only` absolute-positioned inputs cause scroll-jump when the browser focuses them before opening the OS file picker.
+- `html/body/app-root` constrained to `height: 100%; overflow: hidden` in `styles.css` — makes `<main>` the sole scroll container and eliminates the phantom blank strip at the bottom of long pages.
