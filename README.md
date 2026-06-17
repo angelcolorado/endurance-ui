@@ -147,39 +147,45 @@ Full-viewport dashboard layout (`h-full overflow-hidden flex`) with three zones:
 
 ## Feature: Events (`src/app/features/events/`)
 
-Implements the Smart / Presentational pattern for read-only event browsing.
+Implements the Smart / Presentational pattern for event browsing and status management.
 
 ### Architecture
 
 | Component | Role | Responsibilities |
 |---|---|---|
-| `EventListComponent` | Smart / Container | Injects `EventService`, owns `currentPage` + `searchTerm` + `isLoading` signals, wires HTTP via `toSignal()` |
-| `EventTableComponent` | Presentational / Dumb | Renders table, search bar, pagination; emits `pageChange` and `searchChange`; has zero service dependencies |
+| `EventListComponent` | Smart / Container | Injects `EventService`, owns `currentPage` + `searchTerm` + `isLoading` + `eventsPage` signals, dispatches HTTP via `Subject` + `switchMap`, handles optimistic publish |
+| `EventTableComponent` | Presentational / Dumb | Renders table, search bar, pagination, Actions column; emits `pageChange`, `searchChange`, `publishEvent`; zero service dependencies |
 
 ### Reactivity pattern
 
-- `toSignal()` with `initialValue` — no manual `subscribe`/`unsubscribe`, no `ngOnDestroy`.
-- `switchMap` in the stream cancels in-flight requests on rapid page/search changes.
-- Search input uses `Subject<string>` + `debounceTime(300)` + `distinctUntilChanged()` + `takeUntilDestroyed()` — prevents a request per keystroke and eliminates duplicate emissions.
+- `eventsPage` is a writable `signal<EventsPage>` (not `toSignal`) — required to support in-place optimistic mutations without a refetch.
+- `switchMap` on `params$$` cancels in-flight requests on rapid page/search changes.
+- Search input uses `Subject<string>` + `debounceTime(300)` + `distinctUntilChanged()` + `takeUntilDestroyed()`.
+
+### Publish flow — optimistic update
+
+`onPublishEvent(eventId)` calls `EventService.publishEvent()` (`PATCH .../status`). On `next`, it calls `eventsPage.update()` to map the matching event to `status: 'PUBLISHED'` in-place — the table updates instantly with no refetch and no flicker. No error rollback is implemented (out of scope for this milestone).
 
 ### UX — Skeleton loading (no focus loss)
 
-`isLoading` is passed as an `input()` to `EventTableComponent`. The toolbar and `<thead>` are **never destroyed** — only the `<tbody>` swaps between skeleton `<tr>` rows and real data. This fixes the critical bug where `@if` wrapping the entire component destroyed the search `<input>` and caused focus loss after the first keystroke.
+`isLoading` is passed as `input()` to `EventTableComponent`. Only `<tbody>` swaps between skeleton rows and real data — toolbar and `<thead>` are never destroyed, preserving search input focus.
 
 ### `EventService` (`src/app/core/services/event.service.ts`)
 
-- `getEvents(page, limit, search?)` returns `Observable<EventsPage>` with 800ms simulated latency.
-- 12 mock events covering all four statuses: `Active`, `Upcoming`, `Completed`, `Cancelled`.
-- Server-side filtering and pagination implemented against the mock dataset — drop-in ready for a real `HttpClient` call.
+- `getEvents(page, limit, search?)` — real `HttpClient.get` to `/api/v1/catalog/events`. Handles both `SpringPage<T>` (paginated object) and plain `T[]` responses. Plain array is sliced client-side until the backend adds server-side pagination.
+- `publishEvent(eventId)` — `PATCH /api/v1/catalog/events/{id}/status` with `{ status: 'PUBLISHED' }`.
+- `createCatalogEntry(file, data)` — multipart POST, unchanged.
 
 ### Status badge colors
 
 | Status | Color |
 |---|---|
-| Active | Emerald |
-| Upcoming | Blue |
-| Completed | Slate |
-| Cancelled | Red |
+| DRAFT | Amber |
+| PUBLISHED | Emerald |
+
+### Actions column
+
+A `Publish` button (ghost/outline, emerald) appears only when `event.status === 'DRAFT'`. Published events show an empty cell — no action available.
 
 ## Feature: Dashboard — Logistics Command Center (`src/app/features/dashboard/`)
 
@@ -231,6 +237,9 @@ WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all i
 | Service | Endpoint | Responsibility |
 |---|---|---|
 | `AuthService` | `POST /api/v1/auth/login` | Authenticates user, persists token to `localStorage`, maintains `isLoggedIn$` BehaviorSubject |
+| `EventService` | `GET /api/v1/catalog/events` | Fetches paginated event list; handles both `SpringPage<T>` and plain array responses |
+| `EventService` | `PATCH /api/v1/catalog/events/{id}/status` | Publishes a DRAFT event |
+| `EventService` | `POST /api/v1/catalog/events` | Creates a new catalog entry (multipart) |
 
 **API Gateway base:** `http://localhost:8080`
 
@@ -257,9 +266,9 @@ Unit tests use Vitest + `HttpTestingController`.
 | `login.component.spec.ts` | form validation, navigation, all HTTP error branches |
 | `main-layout.component.spec.ts` | logo render, nav labels, active state, logout delegation, router-outlet |
 | `dashboard.component.spec.ts` | metric count, titles/values, trend colors, badge classes, signal reactivity, a11y |
-| `event.service.spec.ts` | pagination, search filter, whitespace trim, empty results, 800ms delay |
-| `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce (299ms/300ms), collapse, distinctUntilChanged, badge classes, pagination guards |
-| `event-list.component.spec.ts` | init call, skeleton visible, table visible post-load, isLoading state, search reset, page change |
+| `event.service.spec.ts` | real HTTP GET with params, SpringPage mapping, plain array client-side pagination, publishEvent PATCH |
+| `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce, badge classes (DRAFT/PUBLISHED), Publish button visibility, publishEvent output |
+| `event-list.component.spec.ts` | init call, skeleton, isLoading, search reset, page change, optimistic publish update |
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators (optional/required/min/reset), name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 
 ## Key Architectural Decisions
@@ -278,6 +287,9 @@ Unit tests use Vitest + `HttpTestingController`.
 - `EventTableComponent` receives `isLoading` as an `input()` and swaps only the `<tbody>` — the `<input>` and `<thead>` survive every loading cycle, preventing focus loss on search.
 - Search debounce lives entirely in the Presentational component (`Subject` + `debounceTime(300)` + `distinctUntilChanged` + `takeUntilDestroyed`) — the Smart component never sees raw keystrokes.
 - `switchMap` in `EventListComponent` cancels stale requests automatically; no explicit unsubscribe needed.
+- `eventsPage` is a writable `signal<EventsPage>` rather than `toSignal()` — necessary for `signal.update()` in the optimistic publish path. `toSignal()` returns a readonly signal; mutating it in-place is not possible.
+- `EventService.getEvents` handles both `SpringPage<T>` and `T[]` responses via `Array.isArray` — plain arrays are sliced client-side to preserve pagination UX while the backend still returns an unpage list.
+- `RaceEvent.registeredAthletes` is optional (`?`) in the model — the backend does not return it yet; the template uses `?? 0` as a safe fallback for `DecimalPipe`.
 - `EventService.createCatalogEntry` accepts `Record<string, unknown>` and spreads `documentVersion: '1.0'` immutably before serializing — the form never holds a field that the user shouldn't control.
 - `DestroyRef` injected once at component level and passed to every `buildOffering()` call — all `valueChanges` subscriptions share the same lifecycle boundary without creating multiple destroy hooks.
 - File upload trigger uses `fileInput.click()` on a `display:none` input rather than the `sr-only` label trick — `sr-only` absolute-positioned inputs cause scroll-jump when the browser focuses them before opening the OS file picker.

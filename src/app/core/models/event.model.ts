@@ -1,11 +1,12 @@
-export type EventStatus = 'Active' | 'Upcoming' | 'Completed' | 'Cancelled';
+export type EventStatus = 'DRAFT' | 'PUBLISHED';
 
 export interface RaceEvent {
   id: string;
   name: string;
-  date: string;
-  registeredAthletes: number;
+  raceDate: string;
+  city: string;
   status: EventStatus;
+  registeredAthletes?: number;
 }
 
 export interface EventsPage {

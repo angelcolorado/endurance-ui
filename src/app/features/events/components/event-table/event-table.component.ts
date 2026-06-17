@@ -17,12 +17,13 @@ export interface PageChangeEvent {
   templateUrl: './event-table.component.html',
 })
 export class EventTableComponent {
-  readonly eventsPage = input.required<EventsPage>();
+  readonly eventsPage  = input.required<EventsPage>();
   readonly searchValue = input<string>('');
-  readonly isLoading = input<boolean>(false);
+  readonly isLoading   = input<boolean>(false);
 
-  readonly pageChange = output<PageChangeEvent>();
+  readonly pageChange   = output<PageChangeEvent>();
   readonly searchChange = output<string>();
+  readonly publishEvent = output<string>();
 
   readonly searchTerm$ = new Subject<string>();
 
@@ -43,6 +44,10 @@ export class EventTableComponent {
     this.pageChange.emit({ page });
   }
 
+  onPublish(eventId: string): void {
+    this.publishEvent.emit(eventId);
+  }
+
   totalPages(): number {
     const { total, limit } = this.eventsPage();
     return Math.max(1, Math.ceil(total / limit));
@@ -55,10 +60,8 @@ export class EventTableComponent {
   getStatusClasses(status: EventStatus): string {
     const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1';
     switch (status) {
-      case 'Active':    return `${base} bg-emerald-500/15 text-emerald-400 ring-emerald-500/30`;
-      case 'Upcoming':  return `${base} bg-blue-500/15 text-blue-400 ring-blue-500/30`;
-      case 'Completed': return `${base} bg-slate-500/15 text-slate-400 ring-slate-500/30`;
-      case 'Cancelled': return `${base} bg-red-500/15 text-red-400 ring-red-500/30`;
+      case 'DRAFT':     return `${base} bg-amber-500/15 text-amber-400 ring-amber-500/30`;
+      case 'PUBLISHED': return `${base} bg-emerald-500/15 text-emerald-400 ring-emerald-500/30`;
     }
   }
 
