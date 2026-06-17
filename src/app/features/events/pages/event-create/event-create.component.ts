@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   ReactiveFormsModule,
   FormBuilder,
@@ -12,11 +13,11 @@ import { Router, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs/operators';
 import { EventService } from '../../../../core/services/event.service';
 
-export type DistanceCategory = 'FIVE_K' | 'TEN_K' | 'HALF_MARATHON' | 'MARATHON' | 'ULTRA';
+export type DistanceCategory = 'FIVE_K' | 'TEN_K' | 'HALF_MARATHON' | 'MARATHON' | 'ULTRA' | 'CUSTOM';
 export type OfferingModality = 'INDIVIDUAL' | 'RELAY';
 
 export const DISTANCE_CATEGORIES: DistanceCategory[] = [
-  'FIVE_K', 'TEN_K', 'HALF_MARATHON', 'MARATHON', 'ULTRA',
+  'FIVE_K', 'TEN_K', 'HALF_MARATHON', 'MARATHON', 'ULTRA', 'CUSTOM',
 ];
 
 export const OFFERING_MODALITIES: OfferingModality[] = ['INDIVIDUAL', 'RELAY'];
@@ -37,9 +38,10 @@ export function futureDateValidator(control: AbstractControl): ValidationErrors 
   templateUrl: './event-create.component.html',
 })
 export class EventCreateComponent {
-  private readonly fb = inject(FormBuilder);
-  private readonly router = inject(Router);
+  private readonly fb           = inject(FormBuilder);
+  private readonly router       = inject(Router);
   private readonly eventService = inject(EventService);
+  private readonly destroyRef   = inject(DestroyRef);
 
   readonly isLoading = signal(false);
   readonly submitError = signal<string | null>(null);
@@ -68,20 +70,44 @@ export class EventCreateComponent {
     ]),
   });
 
-  get offerings(): FormArray  { return this.form.controls.offerings; }
-  get tiers(): FormArray      { return this.form.controls.tiers; }
-  get firstTier(): FormGroup  { return this.tiers.at(0) as FormGroup; }
+  get offerings(): FormArray { return this.form.controls.offerings; }
+  get tiers(): FormArray     { return this.form.controls.tiers; }
+  get firstTier(): FormGroup { return this.tiers.at(0) as FormGroup; }
 
   buildOffering(
     distance: DistanceCategory = 'MARATHON',
     modality: OfferingModality = 'INDIVIDUAL',
     teamSize = 1,
   ): FormGroup {
-    return this.fb.group({
-      distance: [distance, Validators.required],
-      modality: [modality, Validators.required],
-      teamSize: [teamSize as number | null, [Validators.required, Validators.min(1)]],
+    const group = this.fb.group({
+      distance:           [distance, Validators.required],
+      modality:           [modality, Validators.required],
+      teamSize:           [teamSize as number | null, [Validators.required, Validators.min(1)]],
+      customDistanceName: [''],
+      distanceInMeters:   [null as number | null],
     });
+
+    group.get('distance')!.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((value) => {
+      const nameCtrl   = group.get('customDistanceName')!;
+      const metersCtrl = group.get('distanceInMeters')!;
+
+      if (value === 'CUSTOM') {
+        nameCtrl.setValidators(Validators.required);
+        metersCtrl.setValidators([Validators.required, Validators.min(1)]);
+      } else {
+        nameCtrl.clearValidators();
+        nameCtrl.reset('');
+        metersCtrl.clearValidators();
+        metersCtrl.reset(null);
+      }
+
+      nameCtrl.updateValueAndValidity();
+      metersCtrl.updateValueAndValidity();
+    });
+
+    return group;
   }
 
   addOffering(): void {

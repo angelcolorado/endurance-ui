@@ -11,6 +11,7 @@ import {
   DISTANCE_CATEGORIES,
   OFFERING_MODALITIES,
 } from './event-create.component';
+import { FormGroup } from '@angular/forms';
 
 const API_URL = 'http://localhost:8080/api/v1/catalog/events';
 
@@ -42,8 +43,8 @@ describe('futureDateValidator', () => {
 // ── Enum constants ────────────────────────────────────────────────────────────
 
 describe('DISTANCE_CATEGORIES', () => {
-  it('should contain all five distance values', () => {
-    expect(DISTANCE_CATEGORIES).toEqual(['FIVE_K', 'TEN_K', 'HALF_MARATHON', 'MARATHON', 'ULTRA']);
+  it('should contain all six distance values including CUSTOM', () => {
+    expect(DISTANCE_CATEGORIES).toEqual(['FIVE_K', 'TEN_K', 'HALF_MARATHON', 'MARATHON', 'ULTRA', 'CUSTOM']);
   });
 });
 
@@ -68,7 +69,7 @@ describe('EventCreateComponent', () => {
     city: 'Monterrey',
     issuingAuthority: 'FMA',
     convocatoriaPublicationDate: '2026-06-01',
-    offerings: [{ distance: 'MARATHON', modality: 'INDIVIDUAL', teamSize: 1 }],
+    offerings: [{ distance: 'MARATHON', modality: 'INDIVIDUAL', teamSize: 1, customDistanceName: '', distanceInMeters: null }],
     tiers: [{ name: 'Early Bird', startDate: '2026-01-01', endDate: '2026-03-31', price: 800 }],
   };
 
@@ -103,6 +104,8 @@ describe('EventCreateComponent', () => {
     expect(first.distance).toBe('MARATHON');
     expect(first.modality).toBe('INDIVIDUAL');
     expect(first.teamSize).toBe(1);
+    expect(first.customDistanceName).toBe('');
+    expect(first.distanceInMeters).toBeNull();
   });
 
   it('should initialise tiers FormArray with one Early Bird entry', () => {
@@ -128,6 +131,50 @@ describe('EventCreateComponent', () => {
   it('removeOffering should not remove the last remaining row', () => {
     component.removeOffering(0);
     expect(component.offerings.length).toBe(1);
+  });
+
+  // ── CUSTOM distance conditional validators ───────────────────────────────
+
+  it('customDistanceName and distanceInMeters should be optional when distance is not CUSTOM', () => {
+    const group = component.offerings.at(0) as FormGroup;
+    group.get('distance')!.setValue('MARATHON');
+    expect(group.get('customDistanceName')!.valid).toBe(true);
+    expect(group.get('distanceInMeters')!.valid).toBe(true);
+  });
+
+  it('customDistanceName should be required when distance is CUSTOM', () => {
+    const group = component.offerings.at(0) as FormGroup;
+    group.get('distance')!.setValue('CUSTOM');
+    group.get('customDistanceName')!.setValue('');
+    expect(group.get('customDistanceName')!.hasError('required')).toBe(true);
+  });
+
+  it('distanceInMeters should be required when distance is CUSTOM', () => {
+    const group = component.offerings.at(0) as FormGroup;
+    group.get('distance')!.setValue('CUSTOM');
+    group.get('distanceInMeters')!.setValue(null);
+    expect(group.get('distanceInMeters')!.hasError('required')).toBe(true);
+  });
+
+  it('distanceInMeters should reject values below 1 when distance is CUSTOM', () => {
+    const group = component.offerings.at(0) as FormGroup;
+    group.get('distance')!.setValue('CUSTOM');
+    group.get('distanceInMeters')!.setValue(0);
+    expect(group.get('distanceInMeters')!.hasError('min')).toBe(true);
+  });
+
+  it('switching away from CUSTOM should clear validators and reset CUSTOM fields', () => {
+    const group = component.offerings.at(0) as FormGroup;
+    group.get('distance')!.setValue('CUSTOM');
+    group.get('customDistanceName')!.setValue('15K Local');
+    group.get('distanceInMeters')!.setValue(15000);
+
+    group.get('distance')!.setValue('TEN_K');
+
+    expect(group.get('customDistanceName')!.value).toBe('');
+    expect(group.get('distanceInMeters')!.value).toBeNull();
+    expect(group.get('customDistanceName')!.valid).toBe(true);
+    expect(group.get('distanceInMeters')!.valid).toBe(true);
   });
 
   // ── name validators ──────────────────────────────────────────────────────

@@ -57,7 +57,7 @@ Multipart form that submits a new race catalog entry to `POST /api/v1/catalog/ev
 `EventCreateComponent` is a single Smart component (no Presentational split — this is a form, not a data list). It owns:
 
 - **`ReactiveFormsModule`** with strict typing via `FormBuilder`.
-- **`FormArray` for Offerings** — dynamic rows (add / remove). Each row holds `distance` (enum select), `modality` (enum select), and `teamSize` (number).
+- **`FormArray` for Offerings** — dynamic rows (add / remove). Each row holds `distance` (enum select), `modality` (enum select), `teamSize` (number), and two CUSTOM-only fields (`customDistanceName`, `distanceInMeters`).
 - **`FormArray` for Tiers** — single pre-populated row (`Early Bird`).
 - **`futureDateValidator`** — custom `ValidatorFn` that rejects past dates; appends `T00:00:00` before parsing to neutralize UTC timezone shift.
 
@@ -76,9 +76,11 @@ Sends `multipart/form-data` with two parts:
 
 | Field | Type | Values |
 |---|---|---|
-| `distance` | `DistanceCategory` | `FIVE_K` · `TEN_K` · `HALF_MARATHON` · `MARATHON` · `ULTRA` |
+| `distance` | `DistanceCategory` | `FIVE_K` · `TEN_K` · `HALF_MARATHON` · `MARATHON` · `ULTRA` · `CUSTOM` |
 | `modality` | `OfferingModality` | `INDIVIDUAL` · `RELAY` |
 | `teamSize` | `number` | min 1 |
+| `customDistanceName` | `string` | required only when `distance === 'CUSTOM'` |
+| `distanceInMeters` | `number \| null` | required, min(1) only when `distance === 'CUSTOM'` |
 
 ### Form fields
 
@@ -93,6 +95,8 @@ Sends `multipart/form-data` with two parts:
 | `offerings[].distance` | required |
 | `offerings[].modality` | required |
 | `offerings[].teamSize` | required, min(1) |
+| `offerings[].customDistanceName` | required (only when distance = CUSTOM) |
+| `offerings[].distanceInMeters` | required, min(1) (only when distance = CUSTOM) |
 | `tiers[].name/startDate/endDate` | required |
 | `tiers[].price` | required, min(0) |
 
@@ -102,6 +106,8 @@ Sends `multipart/form-data` with two parts:
 - Global scroll fix: `html, body { height: 100%; overflow: hidden }` + `app-root { display: block; height: 100% }` in `styles.css` ensures `<main>` is the sole scroll surface — eliminates the blank strip visible at the bottom of long forms.
 - Layout shell uses `h-full` instead of `h-screen` — stable against OS dialog viewport changes.
 - Submit button is `disabled` until `form.valid && selectedFile` — no silent empty submissions.
+- CUSTOM distance row appears only via `@if (offering.get('distance')?.value === 'CUSTOM')` — zero DOM footprint for standard distances.
+- Conditional validators applied via `distance.valueChanges` + `takeUntilDestroyed(destroyRef)` — no manual `ngOnDestroy`, subscription cleaned up automatically when the component is destroyed. Switching away from CUSTOM resets both fields and clears validators immediately.
 
 ### Testing (`event-create.component.spec.ts`)
 
@@ -254,7 +260,7 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event.service.spec.ts` | pagination, search filter, whitespace trim, empty results, 800ms delay |
 | `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce (299ms/300ms), collapse, distinctUntilChanged, badge classes, pagination guards |
 | `event-list.component.spec.ts` | init call, skeleton visible, table visible post-load, isLoading state, search reset, page change |
-| `event-create.component.spec.ts` | futureDateValidator, enum constants, FormArray init, add/remove offering, validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state |
+| `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators (optional/required/min/reset), name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 
 ## Key Architectural Decisions
 
@@ -273,5 +279,6 @@ Unit tests use Vitest + `HttpTestingController`.
 - Search debounce lives entirely in the Presentational component (`Subject` + `debounceTime(300)` + `distinctUntilChanged` + `takeUntilDestroyed`) — the Smart component never sees raw keystrokes.
 - `switchMap` in `EventListComponent` cancels stale requests automatically; no explicit unsubscribe needed.
 - `EventService.createCatalogEntry` accepts `Record<string, unknown>` and spreads `documentVersion: '1.0'` immutably before serializing — the form never holds a field that the user shouldn't control.
+- `DestroyRef` injected once at component level and passed to every `buildOffering()` call — all `valueChanges` subscriptions share the same lifecycle boundary without creating multiple destroy hooks.
 - File upload trigger uses `fileInput.click()` on a `display:none` input rather than the `sr-only` label trick — `sr-only` absolute-positioned inputs cause scroll-jump when the browser focuses them before opening the OS file picker.
 - `html/body/app-root` constrained to `height: 100%; overflow: hidden` in `styles.css` — makes `<main>` the sole scroll container and eliminates the phantom blank strip at the bottom of long pages.

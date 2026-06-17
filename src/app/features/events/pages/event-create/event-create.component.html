@@ -178,74 +178,137 @@
       @for (offering of offerings.controls; track $index) {
         <div
           [formGroupName]="$index"
-          class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-slate-900/60 rounded-lg border border-slate-700/40"
+          class="flex flex-col gap-4 p-4 bg-slate-900/60 rounded-lg border border-slate-700/40"
         >
-          <!-- Distance Category -->
-          <div>
-            <label [for]="'distance-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
-              Distance <span class="text-red-400" aria-hidden="true">*</span>
-            </label>
-            <select
-              [id]="'distance-' + $index"
-              formControlName="distance"
-              class="w-full bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm
-                     transition-colors duration-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30
-                     [color-scheme:dark]"
-            >
-              @for (cat of distanceCategories; track cat) {
-                <option [value]="cat">{{ cat }}</option>
-              }
-            </select>
-          </div>
+          <!-- Row 1: distance · modality · teamSize + remove -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-          <!-- Modality -->
-          <div>
-            <label [for]="'modality-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
-              Modality <span class="text-red-400" aria-hidden="true">*</span>
-            </label>
-            <select
-              [id]="'modality-' + $index"
-              formControlName="modality"
-              class="w-full bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm
-                     transition-colors duration-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30
-                     [color-scheme:dark]"
-            >
-              @for (mod of offeringModalities; track mod) {
-                <option [value]="mod">{{ mod }}</option>
-              }
-            </select>
-          </div>
-
-          <!-- Team Size + remove -->
-          <div class="flex items-end gap-2">
-            <div class="flex-1">
-              <label [for]="'teamSize-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
-                Team Size <span class="text-red-400" aria-hidden="true">*</span>
+            <!-- Distance Category -->
+            <div>
+              <label [for]="'distance-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
+                Distance <span class="text-red-400" aria-hidden="true">*</span>
               </label>
-              <input
-                [id]="'teamSize-' + $index"
-                type="number" formControlName="teamSize"
-                min="1" placeholder="1"
-                class="w-full bg-slate-800 text-white placeholder-slate-500 border border-slate-600 rounded-lg
-                       px-3 py-2 text-sm transition-colors duration-200 outline-none
-                       focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              />
+              <select
+                [id]="'distance-' + $index"
+                formControlName="distance"
+                class="w-full bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm
+                       transition-colors duration-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30
+                       [color-scheme:dark]"
+              >
+                @for (cat of distanceCategories; track cat) {
+                  <option [value]="cat">{{ cat }}</option>
+                }
+              </select>
             </div>
-            <button
-              type="button"
-              (click)="removeOffering($index)"
-              [disabled]="offerings.length === 1"
-              [attr.aria-label]="'Remove offering ' + ($index + 1)"
-              class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg
-                     text-slate-500 hover:text-red-400 hover:bg-red-400/10
-                     disabled:opacity-30 disabled:cursor-not-allowed
-                     transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
+
+            <!-- Modality -->
+            <div>
+              <label [for]="'modality-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
+                Modality <span class="text-red-400" aria-hidden="true">*</span>
+              </label>
+              <select
+                [id]="'modality-' + $index"
+                formControlName="modality"
+                class="w-full bg-slate-800 text-white border border-slate-600 rounded-lg px-3 py-2 text-sm
+                       transition-colors duration-200 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30
+                       [color-scheme:dark]"
+              >
+                @for (mod of offeringModalities; track mod) {
+                  <option [value]="mod">{{ mod }}</option>
+                }
+              </select>
+            </div>
+
+            <!-- Team Size + remove -->
+            <div class="flex items-end gap-2">
+              <div class="flex-1">
+                <label [for]="'teamSize-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
+                  Team Size <span class="text-red-400" aria-hidden="true">*</span>
+                </label>
+                <input
+                  [id]="'teamSize-' + $index"
+                  type="number" formControlName="teamSize"
+                  min="1" placeholder="1"
+                  class="w-full bg-slate-800 text-white placeholder-slate-500 border border-slate-600 rounded-lg
+                         px-3 py-2 text-sm transition-colors duration-200 outline-none
+                         focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+              <button
+                type="button"
+                (click)="removeOffering($index)"
+                [disabled]="offerings.length === 1"
+                [attr.aria-label]="'Remove offering ' + ($index + 1)"
+                class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg
+                       text-slate-500 hover:text-red-400 hover:bg-red-400/10
+                       disabled:opacity-30 disabled:cursor-not-allowed
+                       transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              >
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
           </div>
+
+          <!-- Row 2 (CUSTOM only): customDistanceName · distanceInMeters -->
+          @if (offering.get('distance')?.value === 'CUSTOM') {
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-700/40">
+
+              <!-- Custom Distance Name -->
+              <div>
+                <label [for]="'customDistanceName-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
+                  Distance Name <span class="text-red-400" aria-hidden="true">*</span>
+                </label>
+                <input
+                  [id]="'customDistanceName-' + $index"
+                  type="text"
+                  formControlName="customDistanceName"
+                  placeholder="e.g. 15K Local"
+                  aria-required="true"
+                  [attr.aria-invalid]="offering.get('customDistanceName')?.invalid && offering.get('customDistanceName')?.touched ? 'true' : null"
+                  [attr.aria-describedby]="'customDistanceName-error-' + $index"
+                  class="w-full bg-slate-800 text-white placeholder-slate-500 border border-slate-600 rounded-lg
+                         px-3 py-2 text-sm transition-colors duration-200 outline-none
+                         focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                />
+                <p [id]="'customDistanceName-error-' + $index" role="alert" class="mt-1 text-xs text-red-400 min-h-[1rem]">
+                  @if (offering.get('customDistanceName')?.invalid && offering.get('customDistanceName')?.touched) {
+                    Distance name is required.
+                  }
+                </p>
+              </div>
+
+              <!-- Distance in Meters -->
+              <div>
+                <label [for]="'distanceInMeters-' + $index" class="block text-xs font-medium text-slate-400 mb-1">
+                  Distance (meters) <span class="text-red-400" aria-hidden="true">*</span>
+                </label>
+                <input
+                  [id]="'distanceInMeters-' + $index"
+                  type="number"
+                  formControlName="distanceInMeters"
+                  min="1"
+                  placeholder="e.g. 15000"
+                  aria-required="true"
+                  [attr.aria-invalid]="offering.get('distanceInMeters')?.invalid && offering.get('distanceInMeters')?.touched ? 'true' : null"
+                  [attr.aria-describedby]="'distanceInMeters-error-' + $index"
+                  class="w-full bg-slate-800 text-white placeholder-slate-500 border border-slate-600 rounded-lg
+                         px-3 py-2 text-sm transition-colors duration-200 outline-none
+                         focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                />
+                <p [id]="'distanceInMeters-error-' + $index" role="alert" class="mt-1 text-xs text-red-400 min-h-[1rem]">
+                  @if (offering.get('distanceInMeters')?.invalid && offering.get('distanceInMeters')?.touched) {
+                    @if (offering.get('distanceInMeters')?.hasError('required')) { Distance is required. }
+                    @else if (offering.get('distanceInMeters')?.hasError('min')) { Distance must be greater than 0. }
+                  }
+                </p>
+              </div>
+
+            </div>
+          }
+
         </div>
       }
     </section>
