@@ -34,6 +34,10 @@ Artifacts land in `dist/`. Production build is optimized by default.
 | `/` | — | — | Redirects to `/login` |
 | `/login` | `LoginComponent` | — | Lazy (`loadComponent`) |
 | `/dashboard` | `DashboardComponent` | `authGuard` (via layout) | Lazy, nested under `MainLayoutComponent` |
+| `/events` | `EventListComponent` | `authGuard` (via layout) | Lazy, nested under `MainLayoutComponent` |
+| `/events/new` | `EventCreateComponent` | `authGuard` (via layout) | Lazy, nested under `MainLayoutComponent` |
+| `/logistics` | `LogisticsEventListComponent` | `authGuard` (via layout) | Lazy, nested under `MainLayoutComponent` |
+| `/logistics/:eventId` | `EventLogisticsComponent` | `authGuard` (via layout) | Lazy, nested under `MainLayoutComponent` |
 
 ### Nested Route Architecture
 
@@ -41,12 +45,23 @@ Authenticated routes are nested under `MainLayoutComponent`, which acts as the p
 
 ```
 AppRoutes
-├── /login           → LoginComponent          (public)
-└── ''  [authGuard]  → MainLayoutComponent     (protected shell)
-        ├── /dashboard   → DashboardComponent
-        ├── /events      → EventListComponent  (Smart) → EventTableComponent (Presentational)
-        └── /events/new  → EventCreateComponent
+├── /login              → LoginComponent                (public, SSR Prerender)
+└── ''  [authGuard]     → MainLayoutComponent           (protected shell, SSR Client)
+        ├── /dashboard      → DashboardComponent
+        ├── /events         → EventListComponent        (Smart) → EventTableComponent (Presentational)
+        ├── /events/new     → EventCreateComponent
+        ├── /logistics      → LogisticsEventListComponent
+        └── /logistics/:id  → EventLogisticsComponent   → CorralCardComponent (Presentational)
 ```
+
+### SSR Render Modes (`app.routes.server.ts`)
+
+| Route | `RenderMode` | Reason |
+|---|---|---|
+| `/login` | `Prerender` | Public static page — safe to render at build time |
+| `**` | `Client` | All authenticated/dynamic routes — must resolve in browser after hydration |
+
+---
 
 ## Feature: Event Create Form (`src/app/features/events/pages/event-create/`)
 
@@ -102,12 +117,11 @@ Sends `multipart/form-data` with two parts:
 
 ### UX decisions
 
-- File upload uses a `<button>` + `#fileInput` template reference with `class="hidden"` — avoids the `sr-only` scroll-jump bug (absolute-positioned inputs cause the scroll container to jump when focused before the OS file picker opens).
-- Global scroll fix: `html, body { height: 100%; overflow: hidden }` + `app-root { display: block; height: 100% }` in `styles.css` ensures `<main>` is the sole scroll surface — eliminates the blank strip visible at the bottom of long forms.
+- File upload uses a `<button>` + `#fileInput` template reference with `class="hidden"` — avoids the `sr-only` scroll-jump bug.
+- Global scroll fix: `html, body { height: 100%; overflow: hidden }` + `app-root { display: block; height: 100% }` in `styles.css` ensures `<main>` is the sole scroll surface.
 - Layout shell uses `h-full` instead of `h-screen` — stable against OS dialog viewport changes.
-- Submit button is `disabled` until `form.valid && selectedFile` — no silent empty submissions.
-- CUSTOM distance row appears only via `@if (offering.get('distance')?.value === 'CUSTOM')` — zero DOM footprint for standard distances.
-- Conditional validators applied via `distance.valueChanges` + `takeUntilDestroyed(destroyRef)` — no manual `ngOnDestroy`, subscription cleaned up automatically when the component is destroyed. Switching away from CUSTOM resets both fields and clears validators immediately.
+- Submit button is `disabled` until `form.valid && selectedFile`.
+- Conditional validators applied via `distance.valueChanges` + `takeUntilDestroyed(destroyRef)`.
 
 ### Testing (`event-create.component.spec.ts`)
 
@@ -140,10 +154,12 @@ Full-viewport dashboard layout (`h-full overflow-hidden flex`) with three zones:
 
 **Topbar** (`bg-slate-800 h-16`)
 - User badge with operator initials.
-- Logout button — delegates to `authService.logout()` which clears the token and redirects to `/login`.
+- Logout button — delegates to `authService.logout()`.
 
 **Content area** (`flex-1 overflow-y-auto p-6 bg-slate-950`)
 - Houses `<router-outlet>` for all child routes.
+
+---
 
 ## Feature: Events (`src/app/features/events/`)
 
@@ -160,36 +176,94 @@ Implements the Smart / Presentational pattern for event browsing and status mana
 
 - `eventsPage` is a writable `signal<EventsPage>` (not `toSignal`) — required to support in-place optimistic mutations without a refetch.
 - `switchMap` on `params$$` cancels in-flight requests on rapid page/search changes.
-- Search input uses `Subject<string>` + `debounceTime(300)` + `distinctUntilChanged()` + `takeUntilDestroyed()`.
 
 ### Publish flow — optimistic update
 
-`onPublishEvent(eventId)` calls `EventService.publishEvent()` (`PATCH .../status`). On `next`, it calls `eventsPage.update()` to map the matching event to `status: 'PUBLISHED'` in-place — the table updates instantly with no refetch and no flicker. No error rollback is implemented (out of scope for this milestone).
-
-### UX — Skeleton loading (no focus loss)
-
-`isLoading` is passed as `input()` to `EventTableComponent`. Only `<tbody>` swaps between skeleton rows and real data — toolbar and `<thead>` are never destroyed, preserving search input focus.
+`onPublishEvent(eventId)` calls `EventService.publishEvent()` (`PATCH .../status`). On `next`, calls `eventsPage.update()` to map the matching event to `status: 'PUBLISHED'` in-place.
 
 ### `EventService` (`src/app/core/services/event.service.ts`)
 
-- `getEvents(page, limit, search?)` — real `HttpClient.get` to `/api/v1/catalog/events`. Handles both `SpringPage<T>` (paginated object) and plain `T[]` responses. Plain array is sliced client-side until the backend adds server-side pagination.
-- `publishEvent(eventId)` — `PATCH /api/v1/catalog/events/{id}/status` with `{ status: 'PUBLISHED' }`.
-- `createCatalogEntry(file, data)` — multipart POST, unchanged.
+- `getEvents(page, limit, search?)` — handles both `SpringPage<T>` and plain `T[]` responses.
+- `publishEvent(eventId)` — `PATCH /api/v1/catalog/events/{id}/status`.
+- `createCatalogEntry(file, data)` — multipart POST.
 
-### Status badge colors
+---
 
-| Status | Color |
+## Feature: Logistics (`src/app/features/logistics/`)
+
+Lifecycle management and corral capacity dashboard. Consumes `LogisticsService` backed by two endpoints.
+
+### Architecture
+
+| Component | Role | Responsibilities |
+|---|---|---|
+| `LogisticsEventListComponent` | Smart | Injects `LogisticsService`, owns `state` signal (`loading \| loaded \| error`), renders event rows with lifecycle badges |
+| `EventLogisticsComponent` | Smart | Reads `:eventId` from `paramMap`, cancels stale requests with `switchMap`, owns `state` signal, delegates card rendering |
+| `CorralCardComponent` | Presentational | Receives `CorralDetail` via `input.required<CorralDetail>()`, derives all display values via `computed()` — no service deps |
+
+### State pattern — discriminated union + `@let`
+
+Both Smart components use a `PageState` discriminated union:
+
+```typescript
+type PageState =
+  | { status: 'loading' }
+  | { status: 'loaded'; data: T }
+  | { status: 'error'; message: string };
+```
+
+Templates capture the signal snapshot once with `@let s = state()`, enabling TypeScript control-flow narrowing inside `@if (s.status === 'loaded')` blocks. Without `@let`, each `state()` call is a fresh invocation that the Angular compiler treats as the full union type.
+
+### Logistics Event List (`/logistics`)
+
+- Lists all events in the logistics lifecycle with their current status badge.
+- `STATUS_META: Record<LogisticsEventStatus, StatusMeta>` maps each of the 6 backend enum values to `{ label, classes, pulse }`.
+- `ALLOCATION_IN_PROGRESS` triggers an `animate-pulse` indicator dot.
+- Each row is a `<a [routerLink]>` navigating to `/logistics/:eventId`.
+- `openCorral: true` events show an orange "Open Corral" badge.
+
+### Logistics Status Badges
+
+| Status | Color | Pulse |
+|---|---|---|
+| `CONFIGURATION_PHASE` | Blue | No |
+| `READY_FOR_ALLOCATION` | Cyan | No |
+| `ALLOCATION_IN_PROGRESS` | Amber | Yes |
+| `ALLOCATION_COMPLETED` | Emerald | No |
+| `EXECUTION_PHASE` | Violet | No |
+| `ARCHIVED` | Slate | No |
+
+### Event Logistics / Corral Dashboard (`/logistics/:eventId`)
+
+- Fetches corrals grouped by `DistanceCategory` from `GET /api/v1/events/:eventId/corrals`.
+- Each non-empty distance category renders as a labelled `<section>` with a grid of `CorralCardComponent`.
+- `paramMap` + `switchMap` + `tap(() => state.set({ status: 'loading' }))` — navigating between events resets state and cancels the previous request.
+
+### `CorralCardComponent` — computed display values
+
+| Computed | Logic |
 |---|---|
-| DRAFT | Amber |
-| PUBLISHED | Emerald |
+| `timeRange` | Parses ISO 8601 durations via `parseIsoDuration()`; formats as `≤ 3:00h`, `1:30h – 3:00h`, or `--` |
+| `occupancyPercent` | `Math.min(100, round(registered / max * 100))` |
+| `cardBorderClass` | Purple = para-athlete, Amber = restricted, Slate = standard |
+| `occupancyBarClass` | Red ≥ 90%, Amber ≥ 70%, Emerald < 70% |
 
-### Actions column
+A11y: `role="progressbar"` with `aria-valuenow/min/max` on occupancy bar; `aria-label` on all badges; `aria-labelledby` per distance section.
 
-A `Publish` button (ghost/outline, emerald) appears only when `event.status === 'DRAFT'`. Published events show an empty cell — no action available.
+### `LogisticsService` (`src/app/core/services/logistics.service.ts`)
+
+| Method | Endpoint | Returns |
+|---|---|---|
+| `getLogisticsEvents(page, size)` | `GET /api/v1/logistics/events?page=&size=` | `Observable<Page<LogisticsEventSummary>>` |
+| `getCorrals(eventId)` | `GET /api/v1/events/:eventId/corrals` | `Observable<CorralsResponse>` |
+
+`parseIsoDuration(duration)` — exported pure utility. Converts ISO 8601 strings (`PT10800S`, `PT1H30M`) to `"3:00h"` / `"1:30h"` format. Returns `"--"` for null, empty, or `PT0S`.
+
+---
 
 ## Feature: Dashboard — Logistics Command Center (`src/app/features/dashboard/`)
 
-Signal-driven operations overview. No services or HTTP calls — state is initialized from typed mock signals and will be replaced with real API calls in a future sprint.
+Signal-driven operations overview. State initialized from typed mock signals — swap in real HTTP data requires only replacing the initial signal value, no template changes.
 
 **Metrics grid** (`grid-cols-1 md:grid-cols-2 lg:grid-cols-4`)
 
@@ -200,21 +274,9 @@ Signal-driven operations overview. No services or HTTP calls — state is initia
 | Corral Capacity | 94% |
 | Assigned Pacers | 45 |
 
-Each card renders: title, value (`text-3xl tabular-nums`), trend arrow (emerald = up, red = down), and a color-accented icon.
+**Upcoming Events table** — columns: Event name · Date · Athletes (`DecimalPipe`) · Logistics status badge.
 
-**Upcoming Events table**
-
-Columns: Event name · Date · Athletes (formatted with `DecimalPipe`) · Logistics status badge.
-
-Badge color coding:
-
-| Status | Color |
-|---|---|
-| Approved | Emerald |
-| Under Review | Amber |
-| Pending | Slate |
-
-**Interfaces exported:** `SummaryMetric`, `UpcomingEvent`, `LogisticsStatus` — available for reuse when connecting to real API data.
+---
 
 ## Feature: Auth / Login (`src/app/features/auth/login/`)
 
@@ -230,7 +292,9 @@ On successful login, redirects to `/dashboard`.
 | `>= 500` | The system is under maintenance. |
 | other | An unexpected error occurred. |
 
-WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all inputs; `role="alert"` + `aria-live="assertive"` on error regions; all decorative SVGs marked `aria-hidden`.
+WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all inputs; `role="alert"` + `aria-live="assertive"` on error regions.
+
+---
 
 ## Core Services (`src/app/core/`)
 
@@ -240,6 +304,8 @@ WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all i
 | `EventService` | `GET /api/v1/catalog/events` | Fetches paginated event list; handles both `SpringPage<T>` and plain array responses |
 | `EventService` | `PATCH /api/v1/catalog/events/{id}/status` | Publishes a DRAFT event |
 | `EventService` | `POST /api/v1/catalog/events` | Creates a new catalog entry (multipart) |
+| `LogisticsService` | `GET /api/v1/logistics/events` | Fetches logistics event list with lifecycle status |
+| `LogisticsService` | `GET /api/v1/events/{id}/corrals` | Fetches corral groups for a specific event |
 
 **API Gateway base:** `http://localhost:8080`
 
@@ -249,6 +315,8 @@ WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all i
 |---|---|---|
 | `authGuard` | `CanActivateFn` | Blocks unauthenticated access; passes through on SSR to avoid premature redirect |
 | `jwtInterceptor` | `HttpInterceptorFn` | Injects `Authorization: Bearer` on every request; calls `logout()` on 401 |
+
+---
 
 ## Testing
 
@@ -269,28 +337,29 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event.service.spec.ts` | real HTTP GET with params, SpringPage mapping, plain array client-side pagination, publishEvent PATCH |
 | `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce, badge classes (DRAFT/PUBLISHED), Publish button visibility, publishEvent output |
 | `event-list.component.spec.ts` | init call, skeleton, isLoading, search reset, page change, optimistic publish update |
-| `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators (optional/required/min/reset), name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
+| `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
+| `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getCorrals` GET URL + response, `getLogisticsEvents` default + custom params |
+| `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, `hasAnyCorrals` true/false, `corralsFor` count + empty, card count per corral, empty state heading |
+
+---
 
 ## Key Architectural Decisions
 
 - `inject()` over constructor injection throughout — aligns with Angular 14+ functional DI style.
-- `signal()` for synchronous component state (`isLoading`, `errorMessage`); RxJS only for async streams.
+- `signal()` for synchronous component state; RxJS only for async streams.
 - `provideHttpClient(withFetch())` — fetch-based HTTP adapter, required for SSR hydration compatibility.
 - All component `.css` files are empty; layout is 100% Tailwind utility classes.
 - `isPlatformBrowser(PLATFORM_ID)` guards all `localStorage` access — safe for SSR server bundle.
-- `AuthService` owns `logout()` navigation to `/login` — guards and interceptors call one place.
 - `authGuard` returns `true` on `isPlatformServer` — prevents SSR from redirecting before browser hydration reads `localStorage`.
-- `jwtInterceptor` registered via `withInterceptors([])` (functional API) — compatible with `withFetch()` and tree-shakeable.
-- `authGuard` placed at the layout shell level, not on individual child routes — single point of protection for the entire authenticated surface.
-- Dashboard state initialized as typed `signal<SummaryMetric[]>` / `signal<UpcomingEvent[]>` — swapping in real HTTP data requires only replacing the initial value, no template changes.
-- `getBadgeClasses()` is a pure method with no DOM access — directly unit-testable without `fixture.detectChanges()`.
-- `EventTableComponent` receives `isLoading` as an `input()` and swaps only the `<tbody>` — the `<input>` and `<thead>` survive every loading cycle, preventing focus loss on search.
-- Search debounce lives entirely in the Presentational component (`Subject` + `debounceTime(300)` + `distinctUntilChanged` + `takeUntilDestroyed`) — the Smart component never sees raw keystrokes.
-- `switchMap` in `EventListComponent` cancels stale requests automatically; no explicit unsubscribe needed.
-- `eventsPage` is a writable `signal<EventsPage>` rather than `toSignal()` — necessary for `signal.update()` in the optimistic publish path. `toSignal()` returns a readonly signal; mutating it in-place is not possible.
-- `EventService.getEvents` handles both `SpringPage<T>` and `T[]` responses via `Array.isArray` — plain arrays are sliced client-side to preserve pagination UX while the backend still returns an unpage list.
-- `RaceEvent.registeredAthletes` is optional (`?`) in the model — the backend does not return it yet; the template uses `?? 0` as a safe fallback for `DecimalPipe`.
-- `EventService.createCatalogEntry` accepts `Record<string, unknown>` and spreads `documentVersion: '1.0'` immutably before serializing — the form never holds a field that the user shouldn't control.
-- `DestroyRef` injected once at component level and passed to every `buildOffering()` call — all `valueChanges` subscriptions share the same lifecycle boundary without creating multiple destroy hooks.
-- File upload trigger uses `fileInput.click()` on a `display:none` input rather than the `sr-only` label trick — `sr-only` absolute-positioned inputs cause scroll-jump when the browser focuses them before opening the OS file picker.
+- `authGuard` placed at the layout shell level — single point of protection for the entire authenticated surface.
+- `app.routes.server.ts` uses `RenderMode.Client` for `**` and `RenderMode.Prerender` only for `/login` — using `Prerender` on `**` caused `NG04002` for routes not pre-rendered at build time.
+- `@let s = state()` in logistics templates captures the signal snapshot once per render cycle, enabling TypeScript control-flow narrowing inside `@if` blocks.
+- `CorralCardComponent` uses `input.required<CorralDetail>()` + `computed()` exclusively — all derived values re-evaluate only when the input signal changes.
+- `parseIsoDuration` is a pure exported function — unit-testable in isolation without `TestBed`.
+- `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.
+- `eventsPage` is a writable `signal<EventsPage>` rather than `toSignal()` — necessary for `signal.update()` in the optimistic publish path.
+- `EventService.getEvents` handles both `SpringPage<T>` and `T[]` responses via `Array.isArray` — plain arrays are sliced client-side to preserve pagination UX.
+- `DestroyRef` injected once at component level and passed to every `buildOffering()` call — all `valueChanges` subscriptions share the same lifecycle boundary.
+- File upload trigger uses `fileInput.click()` on a `display:none` input — `sr-only` absolute-positioned inputs cause scroll-jump when focused before the OS file picker opens.
 - `html/body/app-root` constrained to `height: 100%; overflow: hidden` in `styles.css` — makes `<main>` the sole scroll container and eliminates the phantom blank strip at the bottom of long pages.

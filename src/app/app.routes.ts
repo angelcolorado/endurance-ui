@@ -43,6 +43,20 @@ export const routes: Routes = [
             (m) => m.EventCreateComponent
           ),
       },
+      {
+        path: 'logistics',
+        loadComponent: () =>
+          import('./features/logistics/pages/logistics-event-list/logistics-event-list.component').then(
+            (m) => m.LogisticsEventListComponent
+          ),
+      },
+      {
+        path: 'logistics/:eventId',
+        loadComponent: () =>
+          import('./features/logistics/pages/event-logistics/event-logistics.component').then(
+            (m) => m.EventLogisticsComponent
+          ),
+      },
     ],
   },
 ];
