@@ -4,14 +4,17 @@ import { DistanceCategory } from '../../features/events/pages/event-create/event
 
 export interface CorralDetail {
   corralId: string;
-  corralName: string;
-  order: number;
+  name: string;
+  order?: number;
+  maleBaseTime: string;
+  femaleBaseTime: string;
   minTime: string | null; // ISO 8601 duration, e.g. "PT10800S"
   maxTime: string | null;
   maxCapacity: number;
-  registeredCount: number;
+  registeredCount?: number;
   isParaAthleteCorral: boolean;
   isRestricted: boolean;
+  assignedPacers: string[]; // List of pacer IDs
 }
 
 // Kept for getCorrals() backward compatibility

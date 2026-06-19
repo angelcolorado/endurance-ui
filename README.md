@@ -233,15 +233,42 @@ Templates capture the signal snapshot once with `@let s = state()`, enabling Typ
 | `EXECUTION_PHASE` | Violet | No |
 | `ARCHIVED` | Slate | No |
 
-### Event Logistics / Corral Dashboard (`/logistics/:eventId`)
+### Event Logistics / Corral Builder (`/logistics/:eventId`)
 
 - Fetches full event detail from `GET /api/v1/logistics/events/:id` via `getEventDetails()`.
-- Response is typed as `LogisticsEventDetail` — includes `name`, `raceDate`, `status`, `offerings`, `corralConfigurations`, `contractedPacers`, `openCorral`.
-- Header renders `name` + `raceDate` + lifecycle status badge using the shared `STATUS_META` from the model.
-- `@if (s.data.corralConfigurations.length === 0)` → empty state canvas (dashed border, icon, descriptive copy, "+ Crear Primer Corral" CTA button).
-- `@else` → grid of `<app-corral-card>` iterating `corralConfigurations` directly — no `distanceKeys` fan-out needed.
-- `paramMap` + `switchMap` + `tap(() => state.set({ status: 'loading' }))` — navigating between events resets state and cancels the previous request.
+- Header renders `name` + `raceDate` + lifecycle status badge using the shared `STATUS_META`.
+- `corrals` is a separate writable `signal<CorralDetail[]>` populated from `data.corralConfigurations` — decoupled from the immutable `state` signal so drag-and-drop reordering can mutate it without touching the API response.
+- `hasAnyCorrals` is a `computed(() => corrals().length > 0)` — derived automatically from the writable signal.
+- **Empty state** (`corrals().length === 0`): dashed-border canvas with icon, copy, and "+ Crear Primer Corral" CTA.
+- **Corral Builder** (`corrals().length > 0`): vertical `cdkDropList` with Start Line anchor and draggable corral rows.
+- `paramMap` + `switchMap` + `tap()` — navigating between events resets both `state` and `corrals` signals and cancels the previous request.
 - 404 from `getEventDetails` propagates as `error` state — the event genuinely does not exist.
+
+### Corral Builder — Drag & Drop
+
+- `DragDropModule` from `@angular/cdk/drag-drop` imported in `EventLogisticsComponent`.
+- `cdkDropList` on the container; each row is `cdkDrag` wrapping `<app-corral-card>`.
+- `onDrop(event: CdkDragDrop<CorralDetail[]>)` — early-return when `previousIndex === currentIndex`; otherwise `corrals.update(list => { moveItemInArray(copy, prev, curr); return copy; })` — preserves immutability.
+- `*cdkDragPreview`: 640 px clone with `rotate-1 shadow-2xl` floats under cursor.
+- `*cdkDragPlaceholder`: dashed blue gap shows landing position.
+- **Start Line anchor**: static non-draggable emerald bar above the list — flags icon, dashed separator, `00:00:00` timestamp.
+
+### `CorralDetail` model — real backend fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `corralId` | `string` | |
+| `name` | `string` | Display name (replaces old `corralName`) |
+| `order` | `number?` | Optional — backend may omit in configuration phase |
+| `maleBaseTime` | `string` | ISO 8601 target pace for male athletes |
+| `femaleBaseTime` | `string` | ISO 8601 target pace for female athletes |
+| `minTime` | `string \| null` | ISO 8601 window start |
+| `maxTime` | `string \| null` | ISO 8601 window end |
+| `maxCapacity` | `number` | 0 = open corral |
+| `registeredCount` | `number?` | Optional — absent until allocation phase; defaults to `0` via `?? 0` |
+| `isParaAthleteCorral` | `boolean` | |
+| `isRestricted` | `boolean` | |
+| `assignedPacers` | `string[]` | List of pacer target-time IDs |
 
 ### `StatusMeta` / `STATUS_META` — shared from model
 
@@ -261,16 +288,28 @@ Templates capture the signal snapshot once with `@let s = state()`, enabling Typ
 | `contractedPacers` | `string[]` | |
 | `openCorral` | `boolean` | |
 
-### `CorralCardComponent` — computed display values
+### `CorralCardComponent` — command-center card redesign
 
-| Computed | Logic |
+Horizontal single-row layout (`h-16`) with three data columns separated by dividers:
+
+| Zone | Content |
 |---|---|
-| `timeRange` | Parses ISO 8601 durations via `parseIsoDuration()`; formats as `≤ 3:00h`, `1:30h – 3:00h`, or `--` |
-| `occupancyPercent` | `Math.min(100, round(registered / max * 100))` |
-| `cardBorderClass` | Purple = para-athlete, Amber = restricted, Slate = standard |
-| `occupancyBarClass` | Red ≥ 90%, Amber ≥ 70%, Emerald < 70% |
+| Drag handle (36 px) | 6-dot grip icon, `cdkDragHandle`, `cursor-grab` |
+| Col 1 — Identity | Order chip + `name` bold + Para / Restricted mini-badges |
+| Col 2 — Time Window | Label `10px uppercase` + `font-mono` time range from `parseIsoDuration()` |
+| Col 3 — Capacity | `registeredCount ?? 0 / maxCapacity` or `∞ Open` + progress bar |
 
-A11y: `role="progressbar"` with `aria-valuenow/min/max` on occupancy bar; `aria-label` on all badges; `aria-labelledby` per distance section.
+Computed signals:
+
+| Signal | Logic |
+|---|---|
+| `timeRange` | Parses `minTime`/`maxTime` via `parseIsoDuration()` — `≤ 3:00h`, `2:00h – 3:00h`, or `--` |
+| `occupancyPercent` | `Math.min(100, round((registeredCount ?? 0) / maxCapacity * 100))` — `?? 0` guards optional field |
+| `accentClass` | Left border: purple = para-athlete, amber = restricted, slate = standard |
+| `occupancyBarClass` | Red ≥ 90%, Amber ≥ 70%, Emerald < 70% |
+| `isOpenCapacity` | `!maxCapacity` — renders sky `∞ Open` label and passive bar instead of progress bar |
+
+A11y: `role="progressbar"` with `aria-valuenow/min/max`; `aria-label` on all badges and drag handle.
 
 ### `LogisticsService` (`src/app/core/services/logistics.service.ts`)
 
@@ -364,7 +403,7 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 | `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 | `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
-| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index |
 
 ---
 
@@ -383,6 +422,9 @@ Unit tests use Vitest + `HttpTestingController`.
 - `EventLogisticsComponent` consumes `getEventDetails()` (not `getCorrals()`) — the detail endpoint returns `corralConfigurations` as a flat array, eliminating the `distanceKeys` fan-out and the stale `hasAnyCorrals()` method that caused the post-refactor `TypeError`.
 - `.angular/cache` cleared after refactor — Angular's incremental compiler cached the old compiled template bytecode referencing the removed `hasAnyCorrals()` method; hard cache invalidation is the correct fix.
 - `getCorrals` 404 → `of({ corralsByDistance: {} })` kept for resilience on the corrals sub-endpoint; `getEventDetails` 404 propagates as a real error — semantically different: no corrals is a valid configuration state, but no event means the route is wrong.
+- `corrals` signal in `EventLogisticsComponent` is a separate writable copy of `data.corralConfigurations` — drag-and-drop reordering mutates only the local signal, keeping the API response in `state` immutable. `hasAnyCorrals` is a `computed()` derived from `corrals`, not from `state.data`.
+- `moveItemInArray` (CDK) operates on a spread copy inside `corrals.update()` — preserves immutability; Angular's signal diffing detects the new array reference and re-renders.
+- `registeredCount` is optional in `CorralDetail` (absent during `CONFIGURATION_PHASE`). The `occupancyPercent` computed uses `registeredCount ?? 0` to prevent `NaN` — without it, `undefined / maxCapacity` produces `NaN` which propagates through `Math.min(100, Math.round(NaN))` and causes a runtime `TypeError` in all four template expressions that consume `occupancyPercent()`.
 - `CorralCardComponent` uses `input.required<CorralDetail>()` + `computed()` exclusively — all derived values re-evaluate only when the input signal changes.
 - `parseIsoDuration` is a pure exported function — unit-testable in isolation without `TestBed`.
 - `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.
