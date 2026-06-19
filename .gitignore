@@ -39,6 +39,7 @@ testem.log
 /typings
 __screenshots__/
 seed.js
+.claude/*
 
 # System files
 .DS_Store

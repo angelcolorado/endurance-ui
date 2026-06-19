@@ -235,9 +235,31 @@ Templates capture the signal snapshot once with `@let s = state()`, enabling Typ
 
 ### Event Logistics / Corral Dashboard (`/logistics/:eventId`)
 
-- Fetches corrals grouped by `DistanceCategory` from `GET /api/v1/events/:eventId/corrals`.
-- Each non-empty distance category renders as a labelled `<section>` with a grid of `CorralCardComponent`.
+- Fetches full event detail from `GET /api/v1/logistics/events/:id` via `getEventDetails()`.
+- Response is typed as `LogisticsEventDetail` — includes `name`, `raceDate`, `status`, `offerings`, `corralConfigurations`, `contractedPacers`, `openCorral`.
+- Header renders `name` + `raceDate` + lifecycle status badge using the shared `STATUS_META` from the model.
+- `@if (s.data.corralConfigurations.length === 0)` → empty state canvas (dashed border, icon, descriptive copy, "+ Crear Primer Corral" CTA button).
+- `@else` → grid of `<app-corral-card>` iterating `corralConfigurations` directly — no `distanceKeys` fan-out needed.
 - `paramMap` + `switchMap` + `tap(() => state.set({ status: 'loading' }))` — navigating between events resets state and cancels the previous request.
+- 404 from `getEventDetails` propagates as `error` state — the event genuinely does not exist.
+
+### `StatusMeta` / `STATUS_META` — shared from model
+
+`StatusMeta` interface and `STATUS_META` constant live in `logistics.model.ts` and are imported by both `LogisticsEventListComponent` and `EventLogisticsComponent`. The list component re-exports `STATUS_META` for its own spec's import path compatibility.
+
+### `LogisticsEventDetail` model fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `eventId` | `string` | |
+| `name` | `string` | Displayed in page header |
+| `raceDate` | `string` | ISO 8601 date |
+| `offerings` | `EventOffering[]` | `{ distance, modality, teamSize }` |
+| `isRelay` | `boolean` | |
+| `corralConfigurations` | `CorralDetail[]` | Empty array = `CONFIGURATION_PHASE` with no corrals yet |
+| `status` | `LogisticsEventStatus` | Drives lifecycle badge |
+| `contractedPacers` | `string[]` | |
+| `openCorral` | `boolean` | |
 
 ### `CorralCardComponent` — computed display values
 
@@ -252,10 +274,11 @@ A11y: `role="progressbar"` with `aria-valuenow/min/max` on occupancy bar; `aria-
 
 ### `LogisticsService` (`src/app/core/services/logistics.service.ts`)
 
-| Method | Endpoint | Returns |
-|---|---|---|
-| `getLogisticsEvents(page, size)` | `GET /api/v1/logistics/events?page=&size=` | `Observable<Page<LogisticsEventSummary>>` |
-| `getCorrals(eventId)` | `GET /api/v1/events/:eventId/corrals` | `Observable<CorralsResponse>` |
+| Method | Endpoint | Returns | Error handling |
+|---|---|---|---|
+| `getLogisticsEvents(page, size)` | `GET /api/v1/logistics/events?page=&size=` | `Observable<Page<LogisticsEventSummary>>` | Propagates |
+| `getEventDetails(eventId)` | `GET /api/v1/logistics/events/:id` | `Observable<LogisticsEventDetail>` | Propagates (404 = event not found) |
+| `getCorrals(eventId)` | `GET /api/v1/logistics/events/:id/corrals` | `Observable<CorralsResponse>` | 404 → `of({ corralsByDistance: {} })` |
 
 `parseIsoDuration(duration)` — exported pure utility. Converts ISO 8601 strings (`PT10800S`, `PT1H30M`) to `"3:00h"` / `"1:30h"` format. Returns `"--"` for null, empty, or `PT0S`.
 
@@ -305,7 +328,8 @@ WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all i
 | `EventService` | `PATCH /api/v1/catalog/events/{id}/status` | Publishes a DRAFT event |
 | `EventService` | `POST /api/v1/catalog/events` | Creates a new catalog entry (multipart) |
 | `LogisticsService` | `GET /api/v1/logistics/events` | Fetches logistics event list with lifecycle status |
-| `LogisticsService` | `GET /api/v1/events/{id}/corrals` | Fetches corral groups for a specific event |
+| `LogisticsService` | `GET /api/v1/logistics/events/{id}` | Fetches full event detail (`LogisticsEventDetail`) |
+| `LogisticsService` | `GET /api/v1/logistics/events/{id}/corrals` | Fetches corral groups by distance (`CorralsResponse`) |
 
 **API Gateway base:** `http://localhost:8080`
 
@@ -338,9 +362,9 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event-table.component.spec.ts` | skeleton/real rows, toolbar persistence, debounce, badge classes (DRAFT/PUBLISHED), Publish button visibility, publishEvent output |
 | `event-list.component.spec.ts` | init call, skeleton, isLoading, search reset, page change, optimistic publish update |
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
-| `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getCorrals` GET URL + response, `getLogisticsEvents` default + custom params |
+| `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 | `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
-| `event-logistics.component.spec.ts` | create, loading/loaded/error states, `hasAnyCorrals` true/false, `corralsFor` count + empty, card count per corral, empty state heading |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label |
 
 ---
 
@@ -355,6 +379,10 @@ Unit tests use Vitest + `HttpTestingController`.
 - `authGuard` placed at the layout shell level — single point of protection for the entire authenticated surface.
 - `app.routes.server.ts` uses `RenderMode.Client` for `**` and `RenderMode.Prerender` only for `/login` — using `Prerender` on `**` caused `NG04002` for routes not pre-rendered at build time.
 - `@let s = state()` in logistics templates captures the signal snapshot once per render cycle, enabling TypeScript control-flow narrowing inside `@if` blocks.
+- `StatusMeta` and `STATUS_META` promoted from `logistics-event-list.component.ts` to `logistics.model.ts` — shared across list and detail components; list component re-exports `STATUS_META` for spec import compatibility.
+- `EventLogisticsComponent` consumes `getEventDetails()` (not `getCorrals()`) — the detail endpoint returns `corralConfigurations` as a flat array, eliminating the `distanceKeys` fan-out and the stale `hasAnyCorrals()` method that caused the post-refactor `TypeError`.
+- `.angular/cache` cleared after refactor — Angular's incremental compiler cached the old compiled template bytecode referencing the removed `hasAnyCorrals()` method; hard cache invalidation is the correct fix.
+- `getCorrals` 404 → `of({ corralsByDistance: {} })` kept for resilience on the corrals sub-endpoint; `getEventDetails` 404 propagates as a real error — semantically different: no corrals is a valid configuration state, but no event means the route is wrong.
 - `CorralCardComponent` uses `input.required<CorralDetail>()` + `computed()` exclusively — all derived values re-evaluate only when the input signal changes.
 - `parseIsoDuration` is a pure exported function — unit-testable in isolation without `TestBed`.
 - `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.

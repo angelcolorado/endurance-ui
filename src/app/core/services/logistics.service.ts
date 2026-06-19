@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
-import { CorralsResponse, LogisticsEventSummary, Page } from '../models/logistics.model';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { Observable, catchError, of, throwError } from 'rxjs';
+import { CorralsResponse, LogisticsEventDetail, LogisticsEventSummary, Page } from '../models/logistics.model';
 
 const API_BASE = 'http://localhost:8080';
 
@@ -43,9 +43,22 @@ export class LogisticsService {
     );
   }
 
+  getEventDetails(eventId: string): Observable<LogisticsEventDetail> {
+    return this.http.get<LogisticsEventDetail>(
+      `${API_BASE}/api/v1/logistics/events/${eventId}`,
+    );
+  }
+
   getCorrals(eventId: string): Observable<CorralsResponse> {
     return this.http.get<CorralsResponse>(
-      `${API_BASE}/api/v1/events/${eventId}/corrals`,
+      `${API_BASE}/api/v1/logistics/events/${eventId}/corrals`,
+    ).pipe(
+      catchError((error: HttpErrorResponse) => {
+        if (error.status === 404) {
+          return of({ corralsByDistance: {} } as CorralsResponse);
+        }
+        return throwError(() => error);
+      }),
     );
   }
 }
