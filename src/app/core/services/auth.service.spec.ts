@@ -10,7 +10,7 @@ import { AuthResponse, LoginRequest } from '../models/auth.model';
 const API_URL = 'http://localhost:8080/api/v1/auth/login';
 
 const mockCredentials: LoginRequest = { email: 'athlete@enduranceops.com', password: 'secret123' };
-const mockResponse: AuthResponse = { token: 'jwt.token.here', expiresIn: 3600, role: 'ADMIN' };
+const mockResponse: AuthResponse = { accessToken: 'jwt.token.here', refreshToken: 3600 };
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -77,7 +77,7 @@ describe('AuthService', () => {
     expect(req.request.body).toEqual(mockCredentials);
     req.flush(mockResponse);
 
-    expect(setItemSpy).toHaveBeenCalledWith('auth_token', mockResponse.token);
+    expect(setItemSpy).toHaveBeenCalledWith('auth_token', mockResponse.accessToken);
     expect(emittedState).toBe(true);
   });
 

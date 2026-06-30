@@ -311,6 +311,36 @@ Computed signals:
 
 A11y: `role="progressbar"` with `aria-valuenow/min/max`; `aria-label` on all badges and drag handle.
 
+### Slide-over Panel — Nuevo Corral (`EventLogisticsComponent`)
+
+A fixed `<aside role="dialog" aria-modal="true">` always present in the DOM, translated off-screen when closed. Uses CSS `translate-x-full` ↔ `translate-x-0` transitions (300 ms ease-in-out) driven by the `isSidePanelOpen` signal. A `bg-black/50` backdrop rendered via `@if (isSidePanelOpen())` calls `closePanel()` on click.
+
+#### Form controls (`corralForm: FormGroup`)
+
+| Control | Type | Validators |
+|---|---|---|
+| `name` | `string` | `required` |
+| `minTime` | `string` | optional — format `HH:mm` or `HH:mm:ss` |
+| `maxTime` | `string` | optional — format `HH:mm` or `HH:mm:ss` |
+| `maxCapacity` | `number` | `required`, `min(0)` |
+| `isParaAthlete` | `boolean` | — |
+| `isRestricted` | `boolean` | — |
+
+#### `timeRangeValidator: ValidatorFn` (exported, module-level)
+
+Cross-field validator applied at the `FormGroup` level. Fires only when both `minTime` and `maxTime` have a value; converts both to total seconds via an inline `toSeconds()` helper and returns `{ timeRangeInvalid: true }` when `minSec > maxSec`. Returns `null` (valid) when either field is empty or when neither parses to a number. A `role="alert" aria-live="polite"` error message with a warning icon appears below the time grid when the error is active; both time inputs gain `border-red-500`.
+
+#### `openPanel()` / `closePanel()` / `onSubmit()`
+
+- `openPanel()` resets the form to clean defaults before opening — prevents stale data if the user closes without saving.
+- `onSubmit()` guards on `corralForm.invalid` (covers both field-level and cross-field errors). When valid, constructs a `CorralDetail` object:
+  - `corralId`: `crypto.randomUUID()`
+  - `order`: `corrals().length + 1`
+  - `minTime` / `maxTime`: converted via `timeStringToIso8601()` → `null` if the field is empty
+  - `maleBaseTime` / `femaleBaseTime`: `'PT0S'` (placeholder until a dedicated input is added)
+  - `assignedPacers`: `[]`
+  - Then mutates the signal: `corrals.update(list => [...list, newCorral])`
+
 ### `LogisticsService` (`src/app/core/services/logistics.service.ts`)
 
 | Method | Endpoint | Returns | Error handling |
@@ -319,7 +349,12 @@ A11y: `role="progressbar"` with `aria-valuenow/min/max`; `aria-label` on all bad
 | `getEventDetails(eventId)` | `GET /api/v1/logistics/events/:id` | `Observable<LogisticsEventDetail>` | Propagates (404 = event not found) |
 | `getCorrals(eventId)` | `GET /api/v1/logistics/events/:id/corrals` | `Observable<CorralsResponse>` | 404 → `of({ corralsByDistance: {} })` |
 
-`parseIsoDuration(duration)` — exported pure utility. Converts ISO 8601 strings (`PT10800S`, `PT1H30M`) to `"3:00h"` / `"1:30h"` format. Returns `"--"` for null, empty, or `PT0S`.
+**Exported pure utilities:**
+
+| Function | Signature | Description |
+|---|---|---|
+| `parseIsoDuration(duration)` | `(string \| null \| undefined) → string` | Converts `PT10800S`, `PT1H30M` → `"3:00h"`. Returns `"--"` for null / empty / `PT0S`. |
+| `timeStringToIso8601(timeString)` | `(string) → string \| null` | Converts `HH:mm` or `HH:mm:ss` → `PT<n>S`. Returns `null` for empty, bad format, or out-of-range values (minutes > 59, seconds > 59). |
 
 ---
 
@@ -403,7 +438,8 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 | `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 | `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
-| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index, panel open/close/reset, CSS translate classes, form validity, `onSubmit` close/no-close, `onSubmit` signal mutation, ISO 8601 mapping, null minTime, `timeRangeInvalid` guard (38 cases) · `timeRangeValidator` standalone describe: empty/partial/valid/equal/invalid/unparseable/seconds-precision (9 cases) |
+| `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `timeStringToIso8601` (9 cases — HH:mm, HH:mm:ss, zero, seconds precision, empty, bad format, partial, OOB minutes/seconds), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 
 ---
 
@@ -426,7 +462,12 @@ Unit tests use Vitest + `HttpTestingController`.
 - `moveItemInArray` (CDK) operates on a spread copy inside `corrals.update()` — preserves immutability; Angular's signal diffing detects the new array reference and re-renders.
 - `registeredCount` is optional in `CorralDetail` (absent during `CONFIGURATION_PHASE`). The `occupancyPercent` computed uses `registeredCount ?? 0` to prevent `NaN` — without it, `undefined / maxCapacity` produces `NaN` which propagates through `Math.min(100, Math.round(NaN))` and causes a runtime `TypeError` in all four template expressions that consume `occupancyPercent()`.
 - `CorralCardComponent` uses `input.required<CorralDetail>()` + `computed()` exclusively — all derived values re-evaluate only when the input signal changes.
-- `parseIsoDuration` is a pure exported function — unit-testable in isolation without `TestBed`.
+- `parseIsoDuration` and `timeStringToIso8601` are pure exported functions — unit-testable in isolation without `TestBed`.
+- `timeStringToIso8601` is the inverse of `parseIsoDuration` — used by `onSubmit()` to convert form input (`HH:mm`) to the ISO 8601 duration contract expected by the backend.
+- `timeRangeValidator` is exported at module level (not a method) so it can be unit-tested in a standalone `describe` block without triggering the `TestBed` / HTTP mock lifecycle of the component suite.
+- `onSubmit()` in `EventLogisticsComponent` mutates only the local `corrals` signal — no API call yet. The new `CorralDetail` gets `maleBaseTime: 'PT0S'` and `femaleBaseTime: 'PT0S'` as placeholders; dedicated inputs for those fields are deferred to the next milestone.
+- `crypto.randomUUID()` generates the temporary `corralId` for optimistic local state — guaranteed unique per session, replaced by the backend-assigned ID when the save endpoint is wired.
+- `order` is assigned as `corrals().length + 1` at submit time — reflects the append-to-bottom position; will be reconciled against the backend response when the POST is added.
 - `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.
 - `eventsPage` is a writable `signal<EventsPage>` rather than `toSignal()` — necessary for `signal.update()` in the optimistic publish path.
 - `EventService.getEvents` handles both `SpringPage<T>` and `T[]` responses via `Array.isArray` — plain arrays are sliced client-side to preserve pagination UX.

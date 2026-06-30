@@ -2,8 +2,15 @@ import { Component, inject, signal, computed } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { switchMap, tap, catchError, EMPTY } from 'rxjs';
+import {
+  AbstractControl,
+  FormBuilder,
+  ReactiveFormsModule,
+  ValidatorFn,
+  Validators,
+} from '@angular/forms';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { LogisticsService } from '../../../../core/services/logistics.service';
+import { LogisticsService, timeStringToIso8601 } from '../../../../core/services/logistics.service';
 import {
   CorralDetail,
   LogisticsEventDetail,
@@ -17,21 +24,54 @@ type PageState =
   | { status: 'loaded'; data: LogisticsEventDetail }
   | { status: 'error'; message: string };
 
+export const timeRangeValidator: ValidatorFn = (group: AbstractControl) => {
+  const min = group.get('minTime')?.value as string | null;
+  const max = group.get('maxTime')?.value as string | null;
+  if (!min?.trim() || !max?.trim()) return null;
+
+  const toSeconds = (t: string): number | null => {
+    const parts = t.trim().split(':');
+    if (parts.length < 2) return null;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
+    if ([h, m, s].some(n => isNaN(n))) return null;
+    return h * 3600 + m * 60 + s;
+  };
+
+  const minSec = toSeconds(min);
+  const maxSec = toSeconds(max);
+  if (minSec === null || maxSec === null) return null;
+  return minSec > maxSec ? { timeRangeInvalid: true } : null;
+};
+
 @Component({
   selector: 'app-event-logistics',
   standalone: true,
-  imports: [CorralCardComponent, DragDropModule],
+  imports: [CorralCardComponent, DragDropModule, ReactiveFormsModule],
   templateUrl: './event-logistics.component.html',
 })
 export class EventLogisticsComponent {
   private readonly route            = inject(ActivatedRoute);
   private readonly logisticsService = inject(LogisticsService);
+  private readonly fb               = inject(FormBuilder);
 
-  readonly state   = signal<PageState>({ status: 'loading' });
-  // Writable local copy so moveItemInArray updates trigger change detection
-  readonly corrals = signal<CorralDetail[]>([]);
+  readonly state           = signal<PageState>({ status: 'loading' });
+  readonly corrals         = signal<CorralDetail[]>([]);
+  readonly hasAnyCorrals   = computed(() => this.corrals().length > 0);
+  readonly isSidePanelOpen = signal(false);
 
-  readonly hasAnyCorrals = computed(() => this.corrals().length > 0);
+  readonly corralForm = this.fb.group(
+    {
+      name:          ['', Validators.required],
+      minTime:       [''],
+      maxTime:       [''],
+      maxCapacity:   [0, [Validators.required, Validators.min(0)]],
+      isParaAthlete: [false],
+      isRestricted:  [false],
+    },
+    { validators: timeRangeValidator },
+  );
 
   constructor() {
     this.route.paramMap.pipe(
@@ -50,50 +90,6 @@ export class EventLogisticsComponent {
       }),
       takeUntilDestroyed(),
     ).subscribe(data => {
-      // TODO: Eliminar este mock después de probar la UI interactiva
-      /* const mockCorrals: CorralDetail[] = [
-        {
-          corralId: "SILLAS-VISUALES",
-          name: "Sillas de Ruedas y Atletas Visuales",
-          maleBaseTime: "PT0S",
-          femaleBaseTime: "PT0S",
-          minTime: null,
-          maxTime: "PT9000S",
-          maxCapacity: 150,
-          isParaAthleteCorral: true,
-          isRestricted: false,
-          assignedPacers: []
-        },
-        {
-          corralId: "ELITE",
-          name: "Bloque Élite — V <2:25h / F <3:00h",
-          maleBaseTime: "PT8700S",
-          femaleBaseTime: "PT10800S",
-          minTime: "PT7200S",
-          maxTime: "PT8700S",
-          maxCapacity: 300,
-          isParaAthleteCorral: false,
-          isRestricted: true,
-          assignedPacers: []
-        },
-        {
-          corralId: "BLOQUE-A",
-          name: "Bloque A — 3:00h a 3:30h",
-          maleBaseTime: "PT12600S",
-          femaleBaseTime: "PT14400S",
-          minTime: "PT10800S",
-          maxTime: "PT12600S",
-          maxCapacity: 2000,
-          isParaAthleteCorral: false,
-          isRestricted: false,
-          assignedPacers: [
-            "PT11700S",
-            "PT12600S"
-          ]
-        }
-      ];
-
-      this.corrals.set(mockCorrals); */
       this.corrals.set([...data.corralConfigurations]);
       this.state.set({ status: 'loaded', data });
     });
@@ -110,5 +106,41 @@ export class EventLogisticsComponent {
       moveItemInArray(updated, event.previousIndex, event.currentIndex);
       return updated;
     });
+  }
+
+  openPanel(): void {
+    this.corralForm.reset({
+      name: '', minTime: '', maxTime: '',
+      maxCapacity: 0, isParaAthlete: false, isRestricted: false,
+    });
+    this.isSidePanelOpen.set(true);
+  }
+
+  closePanel(): void {
+    this.isSidePanelOpen.set(false);
+  }
+
+  onSubmit(): void {
+    if (this.corralForm.invalid) return;
+
+    const { name, minTime, maxTime, maxCapacity, isParaAthlete, isRestricted } =
+      this.corralForm.getRawValue();
+
+    const newCorral: CorralDetail = {
+      corralId:          crypto.randomUUID(),
+      name:              name!,
+      order:             this.corrals().length + 1,
+      maleBaseTime:      'PT0S',
+      femaleBaseTime:    'PT0S',
+      minTime:           minTime ? (timeStringToIso8601(minTime) ?? null) : null,
+      maxTime:           maxTime ? (timeStringToIso8601(maxTime) ?? null) : null,
+      maxCapacity:       maxCapacity ?? 0,
+      isParaAthleteCorral: isParaAthlete ?? false,
+      isRestricted:      isRestricted ?? false,
+      assignedPacers:    [],
+    };
+
+    this.corrals.update(list => [...list, newCorral]);
+    this.closePanel();
   }
 }

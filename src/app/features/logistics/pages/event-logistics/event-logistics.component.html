@@ -37,16 +37,36 @@
         <h1 class="text-2xl font-bold text-white tracking-tight">{{ s.data.name }}</h1>
         <p class="mt-1 text-sm text-slate-400 tabular-nums">{{ s.data.raceDate }}</p>
       </div>
-      <span
-        [class]="'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ring-1 flex-shrink-0 '
-                 + getStatusMeta(s.data.status).classes"
-        [attr.aria-label]="'Event status: ' + getStatusMeta(s.data.status).label"
-      >
-        @if (getStatusMeta(s.data.status).pulse) {
-          <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse" aria-hidden="true"></span>
+
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <span
+          [class]="'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ring-1 '
+                   + getStatusMeta(s.data.status).classes"
+          [attr.aria-label]="'Event status: ' + getStatusMeta(s.data.status).label"
+        >
+          @if (getStatusMeta(s.data.status).pulse) {
+            <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse" aria-hidden="true"></span>
+          }
+          {{ getStatusMeta(s.data.status).label }}
+        </span>
+
+        @if (hasAnyCorrals()) {
+          <button
+            type="button"
+            (click)="openPanel()"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                   bg-blue-600 hover:bg-blue-500 active:bg-blue-700
+                   text-white text-xs font-semibold transition-colors duration-150
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            aria-label="Add a new corral to this event"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Nuevo Corral
+          </button>
         }
-        {{ getStatusMeta(s.data.status).label }}
-      </span>
+      </div>
     </div>
 
     <!-- ── Divider ─────────────────────────────────────────────────────────── -->
@@ -77,6 +97,7 @@
         </p>
         <button
           type="button"
+          (click)="openPanel()"
           class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
                  bg-blue-600 hover:bg-blue-500 active:bg-blue-700
                  text-white text-sm font-semibold transition-colors duration-150
@@ -116,14 +137,12 @@
           aria-label="Race start line — first corral departs from here"
         >
           <div class="flex items-center gap-1.5 flex-shrink-0">
-            <!-- Checkered flag pattern -->
             <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18M3 3l9 3 9-3v12l-9 3-9-3"/>
             </svg>
             <span class="text-xs font-bold text-emerald-400 tracking-widest uppercase">Start Line</span>
           </div>
           <div class="flex-1 h-px bg-emerald-500/30 relative">
-            <!-- Dashed tick marks -->
             <div class="absolute inset-0 flex items-center">
               <div class="w-full border-t border-dashed border-emerald-500/40"></div>
             </div>
@@ -168,3 +187,233 @@
   }
 
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- Slide-over panel — always in DOM, translates off-screen when closed      -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+
+<!-- Backdrop -->
+@if (isSidePanelOpen()) {
+  <div
+    class="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300"
+    aria-hidden="true"
+    (click)="closePanel()"
+  ></div>
+}
+
+<!-- Panel -->
+<aside
+  [class]="'fixed inset-y-0 right-0 z-50 flex flex-col w-96 bg-slate-900 border-l border-slate-700 shadow-2xl shadow-black/60 transform transition-transform duration-300 ease-in-out '
+           + (isSidePanelOpen() ? 'translate-x-0' : 'translate-x-full')"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Create new corral"
+>
+
+  <!-- ── Panel Header ──────────────────────────────────────────────────────── -->
+  <div class="flex items-center justify-between px-6 py-4 border-b border-slate-700 flex-shrink-0">
+    <h2 class="text-base font-semibold text-white">Nuevo Corral</h2>
+    <button
+      type="button"
+      (click)="closePanel()"
+      class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors duration-150
+             focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      aria-label="Close panel"
+    >
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ── Form ─────────────────────────────────────────────────────────────── -->
+  <form
+    [formGroup]="corralForm"
+    (ngSubmit)="onSubmit()"
+    class="flex flex-col flex-1 overflow-hidden"
+    novalidate
+  >
+    <!-- Scrollable body -->
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+      <!-- Name -->
+      <div>
+        <label for="corral-name" class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+          Nombre <span class="text-red-400" aria-hidden="true">*</span>
+        </label>
+        <input
+          id="corral-name"
+          type="text"
+          formControlName="name"
+          placeholder="Ej. Corral Elite"
+          autocomplete="off"
+          class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2
+                 text-sm text-white placeholder-slate-500
+                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                 transition-colors duration-150"
+          [class.border-red-500]="corralForm.controls.name.invalid && corralForm.controls.name.touched"
+          aria-required="true"
+          [attr.aria-invalid]="corralForm.controls.name.invalid && corralForm.controls.name.touched"
+        />
+        @if (corralForm.controls.name.invalid && corralForm.controls.name.touched) {
+          <p class="mt-1.5 text-xs text-red-400" role="alert">El nombre es obligatorio.</p>
+        }
+      </div>
+
+      <!-- Time window row -->
+      <div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="corral-min-time" class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+              Tiempo mínimo
+            </label>
+            <input
+              id="corral-min-time"
+              type="text"
+              formControlName="minTime"
+              placeholder="HH:MM:SS"
+              autocomplete="off"
+              [class]="'w-full rounded-lg bg-slate-800 border px-3 py-2 font-mono text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-150 '
+                       + (corralForm.hasError('timeRangeInvalid') ? 'border-red-500' : 'border-slate-700')"
+            />
+          </div>
+          <div>
+            <label for="corral-max-time" class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+              Tiempo máximo
+            </label>
+            <input
+              id="corral-max-time"
+              type="text"
+              formControlName="maxTime"
+              placeholder="HH:MM:SS"
+              autocomplete="off"
+              [class]="'w-full rounded-lg bg-slate-800 border px-3 py-2 font-mono text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-150 '
+                       + (corralForm.hasError('timeRangeInvalid') ? 'border-red-500' : 'border-slate-700')"
+            />
+          </div>
+        </div>
+        @if (corralForm.hasError('timeRangeInvalid')) {
+          <p class="mt-1.5 flex items-center gap-1.5 text-xs text-red-400" role="alert" aria-live="polite">
+            <svg class="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            </svg>
+            El tiempo mínimo debe ser menor o igual al tiempo máximo.
+          </p>
+        }
+      </div>
+
+      <!-- Max capacity -->
+      <div>
+        <label for="corral-max-capacity" class="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+          Capacidad máxima <span class="text-red-400" aria-hidden="true">*</span>
+          <span class="ml-1 text-[10px] text-slate-500 normal-case tracking-normal font-normal">(0 = ilimitado)</span>
+        </label>
+        <input
+          id="corral-max-capacity"
+          type="number"
+          formControlName="maxCapacity"
+          min="0"
+          class="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2
+                 text-sm text-white placeholder-slate-500 tabular-nums
+                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                 transition-colors duration-150"
+          [class.border-red-500]="corralForm.controls.maxCapacity.invalid && corralForm.controls.maxCapacity.touched"
+          aria-required="true"
+          [attr.aria-invalid]="corralForm.controls.maxCapacity.invalid && corralForm.controls.maxCapacity.touched"
+        />
+        @if (corralForm.controls.maxCapacity.invalid && corralForm.controls.maxCapacity.touched) {
+          <p class="mt-1.5 text-xs text-red-400" role="alert">Ingresa una capacidad válida (mínimo 0).</p>
+        }
+      </div>
+
+      <!-- Toggles row -->
+      <div class="space-y-3 pt-1">
+        <!-- isParaAthlete -->
+        <label class="flex items-center justify-between cursor-pointer group">
+          <div>
+            <p class="text-sm font-medium text-slate-200">Corral Para-atleta</p>
+            <p class="text-xs text-slate-500 mt-0.5">Habilitado para atletas con discapacidad física.</p>
+          </div>
+          <div class="relative ml-4 flex-shrink-0">
+            <input
+              id="corral-para-athlete"
+              type="checkbox"
+              formControlName="isParaAthlete"
+              class="sr-only peer"
+              aria-label="Enable para-athlete corral"
+            />
+            <label
+              for="corral-para-athlete"
+              class="flex w-10 h-6 items-center rounded-full bg-slate-700 cursor-pointer
+                     transition-colors duration-200 peer-checked:bg-purple-600
+                     peer-focus-visible:ring-2 peer-focus-visible:ring-purple-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-slate-900
+                     after:content-[''] after:absolute after:top-1 after:left-1 after:w-4 after:h-4
+                     after:rounded-full after:bg-white after:transition-transform after:duration-200
+                     peer-checked:after:translate-x-4"
+            >
+              <span class="sr-only">Activar corral para-atleta</span>
+            </label>
+          </div>
+        </label>
+
+        <div class="h-px bg-slate-800"></div>
+
+        <!-- isRestricted -->
+        <label class="flex items-center justify-between cursor-pointer group">
+          <div>
+            <p class="text-sm font-medium text-slate-200">Acceso Restringido</p>
+            <p class="text-xs text-slate-500 mt-0.5">Solo atletas con tiempo de clasificación validado.</p>
+          </div>
+          <div class="relative ml-4 flex-shrink-0">
+            <input
+              id="corral-restricted"
+              type="checkbox"
+              formControlName="isRestricted"
+              class="sr-only peer"
+              aria-label="Enable restricted access for this corral"
+            />
+            <label
+              for="corral-restricted"
+              class="flex w-10 h-6 items-center rounded-full bg-slate-700 cursor-pointer
+                     transition-colors duration-200 peer-checked:bg-amber-500
+                     peer-focus-visible:ring-2 peer-focus-visible:ring-amber-500 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-slate-900
+                     after:content-[''] after:absolute after:top-1 after:left-1 after:w-4 after:h-4
+                     after:rounded-full after:bg-white after:transition-transform after:duration-200
+                     peer-checked:after:translate-x-4"
+            >
+              <span class="sr-only">Activar acceso restringido</span>
+            </label>
+          </div>
+        </label>
+      </div>
+
+    </div>
+
+    <!-- ── Footer ────────────────────────────────────────────────────────────── -->
+    <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-700 flex-shrink-0">
+      <button
+        type="button"
+        (click)="closePanel()"
+        class="px-4 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:text-white
+               bg-slate-800 hover:bg-slate-700 transition-colors duration-150
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+        aria-label="Cancel and close panel"
+      >
+        Cancelar
+      </button>
+      <button
+        type="submit"
+        [disabled]="corralForm.invalid"
+        class="px-4 py-2 rounded-lg text-sm font-semibold text-white
+               bg-blue-600 hover:bg-blue-500 active:bg-blue-700
+               disabled:opacity-40 disabled:cursor-not-allowed
+               transition-colors duration-150
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        aria-label="Save new corral"
+      >
+        Guardar Corral
+      </button>
+    </div>
+  </form>
+
+</aside>

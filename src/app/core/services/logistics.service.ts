@@ -5,6 +5,26 @@ import { CorralsResponse, LogisticsEventDetail, LogisticsEventSummary, Page } fr
 
 const API_BASE = 'http://localhost:8080';
 
+function timeToSeconds(timeString: string): number | null {
+  if (!timeString?.trim()) return null;
+  const parts = timeString.trim().split(':');
+  if (parts.length < 2 || parts.length > 3) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
+  if ([h, m, s].some(n => isNaN(n)) || m > 59 || s > 59 || h < 0) return null;
+  return h * 3600 + m * 60 + s;
+}
+
+/**
+ * Converts 'HH:mm' or 'HH:mm:ss' to an ISO 8601 duration (e.g. 'PT5400S').
+ * Returns null for empty, invalid format, or out-of-range values.
+ */
+export function timeStringToIso8601(timeString: string): string | null {
+  const seconds = timeToSeconds(timeString);
+  return seconds !== null ? `PT${seconds}S` : null;
+}
+
 /**
  * Converts an ISO 8601 duration (e.g. "PT10800S", "PT5400S") to a human-readable
  * time string (e.g. "3:00h", "1:30h"). Returns '--' for null, empty, or "PT0S".

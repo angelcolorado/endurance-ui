@@ -8,7 +8,7 @@ import { EventsPage } from '../../../../core/models/event.model';
 
 const MOCK_PAGE: EventsPage = {
   data: [
-    { id: '1', name: 'Monterrey 2026', date: '2026-06-28', registeredAthletes: 3200, status: 'Active' },
+    { id: '1', name: 'Monterrey 2026', raceDate: '2026-06-28', city: 'Monterrey', registeredAthletes: 3200, status: 'PUBLISHED' },
   ],
   total: 1,
   page: 1,

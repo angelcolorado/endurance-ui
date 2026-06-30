@@ -5,10 +5,10 @@ import { EventsPage } from '../../../../core/models/event.model';
 
 const MOCK_PAGE: EventsPage = {
   data: [
-    { id: '1', name: 'Monterrey 2026',  date: '2026-06-28', registeredAthletes: 3200, status: 'Active'    },
-    { id: '2', name: 'Trail Bajío',      date: '2026-07-12', registeredAthletes: 1850, status: 'Upcoming'  },
-    { id: '3', name: 'Marathon CDMX',    date: '2026-08-03', registeredAthletes: 7400, status: 'Completed' },
-    { id: '4', name: 'Cancún 70.3',      date: '2026-08-17', registeredAthletes: 2100, status: 'Cancelled' },
+    { id: '1', name: 'Monterrey 2026',  raceDate: '2026-06-28', city: 'Monterrey', registeredAthletes: 3200, status: 'PUBLISHED' },
+    { id: '2', name: 'Trail Bajío',      raceDate: '2026-07-12', city: 'León',      registeredAthletes: 1850, status: 'DRAFT'     },
+    { id: '3', name: 'Marathon CDMX',    raceDate: '2026-08-03', city: 'CDMX',      registeredAthletes: 7400, status: 'PUBLISHED' },
+    { id: '4', name: 'Cancún 70.3',      raceDate: '2026-08-17', city: 'Cancún',    registeredAthletes: 2100, status: 'DRAFT'     },
   ],
   total: 12,
   page: 1,
@@ -150,24 +150,14 @@ describe('EventTableComponent', () => {
 
   // ── Status badges ─────────────────────────────────────────────────────
 
-  it('getStatusClasses should return emerald for Active', () => {
+  it('getStatusClasses should return emerald for PUBLISHED', () => {
     create();
-    expect(component.getStatusClasses('Active')).toContain('text-emerald-400');
+    expect(component.getStatusClasses('PUBLISHED')).toContain('text-emerald-400');
   });
 
-  it('getStatusClasses should return blue for Upcoming', () => {
+  it('getStatusClasses should return amber for DRAFT', () => {
     create();
-    expect(component.getStatusClasses('Upcoming')).toContain('text-blue-400');
-  });
-
-  it('getStatusClasses should return slate for Completed', () => {
-    create();
-    expect(component.getStatusClasses('Completed')).toContain('text-slate-400');
-  });
-
-  it('getStatusClasses should return red for Cancelled', () => {
-    create();
-    expect(component.getStatusClasses('Cancelled')).toContain('text-red-400');
+    expect(component.getStatusClasses('DRAFT')).toContain('text-amber-400');
   });
 
   // ── Pagination output ─────────────────────────────────────────────────
