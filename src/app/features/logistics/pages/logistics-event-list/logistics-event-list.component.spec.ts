@@ -77,7 +77,10 @@ describe('LogisticsEventListComponent', () => {
 
   afterEach(() => httpMock.verify());
 
-  it('should create', () => expect(component).toBeTruthy());
+  it('should create', () => {
+    httpMock.expectOne({ method: 'GET', url: API_URL }).flush(MOCK_PAGE);
+    expect(component).toBeTruthy();
+  });
 
   it('should be in loading state initially', () => {
     expect(component.state().status).toBe('loading');
@@ -137,6 +140,7 @@ describe('LogisticsEventListComponent', () => {
     httpMock.expectOne({ method: 'GET', url: API_URL }).flush(MOCK_PAGE);
     fixture.detectChanges();
     const link = fixture.debugElement.query(By.css('[role="listitem"]'));
-    expect(link.attributes['ng-reflect-router-link']).toContain('evt-1');
+    const href: string = (link.nativeElement as HTMLElement).getAttribute('href') ?? '';
+    expect(href).toContain('evt-1');
   });
 });

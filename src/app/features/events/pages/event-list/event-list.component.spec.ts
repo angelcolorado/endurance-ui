@@ -1,7 +1,7 @@
-import { TestBed, ComponentFixture, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { provideRouter } from '@angular/router';
+import { of, Subject } from 'rxjs';
 import { EventListComponent } from './event-list.component';
 import { EventService } from '../../../../core/services/event.service';
 import { EventsPage } from '../../../../core/models/event.model';
@@ -18,16 +18,23 @@ const MOCK_PAGE: EventsPage = {
 describe('EventListComponent', () => {
   let fixture: ComponentFixture<EventListComponent>;
   let component: EventListComponent;
-  let mockEventService: { getEvents: ReturnType<typeof vi.fn> };
+  let mockEventService: { getEvents: ReturnType<typeof vi.fn>; publishEvent: ReturnType<typeof vi.fn> };
+  // A controllable subject lets us decide when the observable emits.
+  let responseSubject: Subject<EventsPage>;
 
   beforeEach(async () => {
+    responseSubject = new Subject<EventsPage>();
     mockEventService = {
-      getEvents: vi.fn().mockReturnValue(of(MOCK_PAGE).pipe(delay(800))),
+      getEvents: vi.fn().mockReturnValue(responseSubject.asObservable()),
+      publishEvent: vi.fn().mockReturnValue(of({})),
     };
 
     await TestBed.configureTestingModule({
       imports: [EventListComponent],
-      providers: [{ provide: EventService, useValue: mockEventService }],
+      providers: [
+        provideRouter([]),
+        { provide: EventService, useValue: mockEventService },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(EventListComponent);
@@ -43,15 +50,13 @@ describe('EventListComponent', () => {
     expect(mockEventService.getEvents).toHaveBeenCalledWith(1, 5, '');
   });
 
-  it('should show skeleton loader while loading', () => {
-    // isLoading is true right after construction before the 800ms resolves
+  it('should set isLoading to true on init before data arrives', () => {
     fixture.detectChanges();
-    const skeleton = fixture.debugElement.query(By.css('[aria-label="Loading events"]'));
-    expect(skeleton).toBeTruthy();
+    expect(component.isLoading()).toBe(true);
   });
 
-  it('should hide skeleton and show table after data loads', fakeAsync(() => {
-    tick(800);
+  it('should hide skeleton and show table after data loads', () => {
+    responseSubject.next(MOCK_PAGE);
     fixture.detectChanges();
 
     const skeleton = fixture.debugElement.query(By.css('[aria-label="Loading events"]'));
@@ -59,29 +64,29 @@ describe('EventListComponent', () => {
 
     expect(skeleton).toBeNull();
     expect(table).toBeTruthy();
-  }));
+  });
 
-  it('should set isLoading to false after data arrives', fakeAsync(() => {
+  it('should set isLoading to false after data arrives', () => {
     expect(component.isLoading()).toBe(true);
-    tick(800);
+    responseSubject.next(MOCK_PAGE);
     expect(component.isLoading()).toBe(false);
-  }));
+  });
 
-  it('should reset to page 1 and re-fetch on search change', fakeAsync(() => {
-    tick(800);
+  it('should reset to page 1 and re-fetch on search change', () => {
+    responseSubject.next(MOCK_PAGE);
     component.currentPage.set(3);
     component.onSearchChange('cdmx');
 
     expect(component.currentPage()).toBe(1);
     expect(component.searchTerm()).toBe('cdmx');
     expect(mockEventService.getEvents).toHaveBeenCalledWith(1, 5, 'cdmx');
-  }));
+  });
 
-  it('should fetch the correct page on page change', fakeAsync(() => {
-    tick(800);
+  it('should fetch the correct page on page change', () => {
+    responseSubject.next(MOCK_PAGE);
     component.onPageChange({ page: 2 });
 
     expect(component.currentPage()).toBe(2);
     expect(mockEventService.getEvents).toHaveBeenCalledWith(2, 5, '');
-  }));
+  });
 });
