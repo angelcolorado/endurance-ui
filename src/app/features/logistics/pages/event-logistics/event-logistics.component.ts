@@ -11,7 +11,7 @@ import {
 } from '@angular/forms';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { LogisticsService } from '../../../../core/services/logistics.service';
-import { checkTimeOverlap, timeToSeconds, timeStringToIso8601 } from '../../../../core/utils/time.utils';
+import { checkTimeOverlap, isoToSeconds, secondsToTimeString, timeToSeconds, timeStringToIso8601 } from '../../../../core/utils/time.utils';
 import {
   CorralDetail,
   LogisticsEventDetail,
@@ -50,6 +50,8 @@ export class EventLogisticsComponent {
   readonly corrals         = signal<CorralDetail[]>([]);
   readonly hasAnyCorrals   = computed(() => this.corrals().length > 0);
   readonly isSidePanelOpen = signal(false);
+
+  editingCorralId: string | null = null;
 
   readonly corralForm = this.fb.group(
     {
@@ -101,6 +103,7 @@ export class EventLogisticsComponent {
   }
 
   openPanel(): void {
+    this.editingCorralId = null;
     this.corralForm.reset({
       name: '', minTime: '', maxTime: '',
       maxCapacity: 0, isParaAthlete: false, isRestricted: false,
@@ -110,7 +113,34 @@ export class EventLogisticsComponent {
   }
 
   closePanel(): void {
+    this.editingCorralId = null;
     this.isSidePanelOpen.set(false);
+  }
+
+  editCorral(corral: CorralDetail): void {
+    this.editingCorralId = corral.corralId;
+    const toHhmm = (iso: string | null): string => {
+      const secs = isoToSeconds(iso);
+      return secs !== null && secs > 0 ? secondsToTimeString(secs) : '';
+    };
+    this.corralForm.reset({
+      name:          corral.name,
+      minTime:       toHhmm(corral.minTime),
+      maxTime:       toHhmm(corral.maxTime),
+      maxCapacity:   corral.maxCapacity,
+      isParaAthlete: corral.isParaAthleteCorral,
+      isRestricted:  corral.isRestricted,
+      maleBaseTime:  toHhmm(corral.maleBaseTime),
+      femaleBaseTime: toHhmm(corral.femaleBaseTime),
+    });
+    this.isSidePanelOpen.set(true);
+  }
+
+  deleteCorral(id: string): void {
+    this.corrals.update(list => list.filter(c => c.corralId !== id));
+    if (this.editingCorralId === id) {
+      this.closePanel();
+    }
   }
 
   onSubmit(): void {
@@ -122,27 +152,47 @@ export class EventLogisticsComponent {
     const newMinSec = minTime ? timeToSeconds(minTime) : null;
     const newMaxSec = maxTime ? timeToSeconds(maxTime) : null;
 
+    // Exclude the corral being edited from the overlap check — it occupies its own range.
+    const otherCorrals = this.editingCorralId
+      ? this.corrals().filter(c => c.corralId !== this.editingCorralId)
+      : this.corrals();
+
     if (newMinSec !== null && newMaxSec !== null &&
-        checkTimeOverlap(newMinSec, newMaxSec, this.corrals())) {
+        checkTimeOverlap(newMinSec, newMaxSec, otherCorrals)) {
       this.corralForm.setErrors({ overlap: true });
       return;
     }
 
-    const newCorral: CorralDetail = {
-      corralId:            crypto.randomUUID(),
-      name:                name!,
-      order:               this.corrals().length + 1,
-      maleBaseTime:        (maleBaseTime   ? timeStringToIso8601(maleBaseTime)   : null) ?? 'PT0S',
-      femaleBaseTime:      (femaleBaseTime ? timeStringToIso8601(femaleBaseTime) : null) ?? 'PT0S',
-      minTime:             minTime  ? (timeStringToIso8601(minTime)  ?? null) : null,
-      maxTime:             maxTime  ? (timeStringToIso8601(maxTime)  ?? null) : null,
-      maxCapacity:         maxCapacity ?? 0,
-      isParaAthleteCorral: isParaAthlete ?? false,
-      isRestricted:        isRestricted  ?? false,
-      assignedPacers:      [],
-    };
+    if (this.editingCorralId) {
+      const id = this.editingCorralId;
+      this.corrals.update(list => list.map(c => c.corralId !== id ? c : {
+        ...c,
+        name:                name!,
+        maleBaseTime:        (maleBaseTime   ? timeStringToIso8601(maleBaseTime)   : null) ?? 'PT0S',
+        femaleBaseTime:      (femaleBaseTime ? timeStringToIso8601(femaleBaseTime) : null) ?? 'PT0S',
+        minTime:             minTime  ? (timeStringToIso8601(minTime)  ?? null) : null,
+        maxTime:             maxTime  ? (timeStringToIso8601(maxTime)  ?? null) : null,
+        maxCapacity:         maxCapacity ?? 0,
+        isParaAthleteCorral: isParaAthlete ?? false,
+        isRestricted:        isRestricted  ?? false,
+      }));
+    } else {
+      const newCorral: CorralDetail = {
+        corralId:            crypto.randomUUID(),
+        name:                name!,
+        order:               this.corrals().length + 1,
+        maleBaseTime:        (maleBaseTime   ? timeStringToIso8601(maleBaseTime)   : null) ?? 'PT0S',
+        femaleBaseTime:      (femaleBaseTime ? timeStringToIso8601(femaleBaseTime) : null) ?? 'PT0S',
+        minTime:             minTime  ? (timeStringToIso8601(minTime)  ?? null) : null,
+        maxTime:             maxTime  ? (timeStringToIso8601(maxTime)  ?? null) : null,
+        maxCapacity:         maxCapacity ?? 0,
+        isParaAthleteCorral: isParaAthlete ?? false,
+        isRestricted:        isRestricted  ?? false,
+        assignedPacers:      [],
+      };
+      this.corrals.update(list => [...list, newCorral]);
+    }
 
-    this.corrals.update(list => [...list, newCorral]);
     this.closePanel();
   }
 }

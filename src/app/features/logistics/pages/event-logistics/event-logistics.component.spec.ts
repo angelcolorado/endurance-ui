@@ -371,6 +371,128 @@ describe('EventLogisticsComponent', () => {
     expect(component.corralForm.hasError('overlap')).toBe(false);
     expect(component.corrals().length).toBe(countBefore + 1);
   });
+
+  // ── deleteCorral() ───────────────────────────────────────────────────────────
+
+  it('deleteCorral() should remove the corral from the signal', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const idsBefore = component.corrals().map(c => c.corralId);
+    component.deleteCorral(CORRAL_A.corralId);
+    expect(component.corrals().map(c => c.corralId)).not.toContain(CORRAL_A.corralId);
+    expect(component.corrals().length).toBe(idsBefore.length - 1);
+  });
+
+  it('deleteCorral() should close and clear the panel when deleting the corral being edited', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    component.deleteCorral(CORRAL_B.corralId);
+    expect(component.isSidePanelOpen()).toBe(false);
+    expect(component.editingCorralId).toBeNull();
+  });
+
+  it('deleteCorral() should NOT close the panel when a different corral is being edited', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    component.deleteCorral(CORRAL_A.corralId);
+    expect(component.isSidePanelOpen()).toBe(true);
+    expect(component.editingCorralId).toBe(CORRAL_B.corralId);
+  });
+
+  // ── editCorral() ─────────────────────────────────────────────────────────────
+
+  it('editCorral() should set editingCorralId', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    expect(component.editingCorralId).toBe(CORRAL_B.corralId);
+  });
+
+  it('editCorral() should open the side panel', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    expect(component.isSidePanelOpen()).toBe(true);
+  });
+
+  it('editCorral() should patch the form with the corral name', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    expect(component.corralForm.value.name).toBe(CORRAL_B.name);
+  });
+
+  it('editCorral() should convert minTime ISO 8601 to HH:mm in form', () => {
+    // CORRAL_B.minTime = 'PT10800S' = 3h = '03:00'
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    expect(component.corralForm.value.minTime).toBe('03:00');
+  });
+
+  it('editCorral() should convert maxTime ISO 8601 to HH:mm in form', () => {
+    // CORRAL_B.maxTime = 'PT14400S' = 4h = '04:00'
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    expect(component.corralForm.value.maxTime).toBe('04:00');
+  });
+
+  it('editCorral() should map null minTime to empty string in form', () => {
+    // CORRAL_A.minTime = null
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_A);
+    expect(component.corralForm.value.minTime).toBe('');
+  });
+
+  // ── onSubmit() — edit mode ───────────────────────────────────────────────────
+
+  it('onSubmit() in edit mode should update the corral name in the signal', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    component.corralForm.patchValue({ name: 'Corral B Renamed' });
+    component.onSubmit();
+    const updated = component.corrals().find(c => c.corralId === CORRAL_B.corralId);
+    expect(updated?.name).toBe('Corral B Renamed');
+  });
+
+  it('onSubmit() in edit mode should NOT change the signal length', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const countBefore = component.corrals().length;
+    component.editCorral(CORRAL_B);
+    component.corralForm.patchValue({ name: 'Corral B Renamed' });
+    component.onSubmit();
+    expect(component.corrals().length).toBe(countBefore);
+  });
+
+  it('onSubmit() in edit mode should clear editingCorralId after save', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    component.corralForm.patchValue({ name: 'Corral B Renamed' });
+    component.onSubmit();
+    expect(component.editingCorralId).toBeNull();
+  });
+
+  it('onSubmit() in edit mode should NOT flag overlap against the corral being edited', () => {
+    // Saving CORRAL_B with its own time range should NOT trigger overlap
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.editCorral(CORRAL_B);
+    // CORRAL_B minTime = PT10800S = 03:00, maxTime = PT14400S = 04:00
+    component.corralForm.patchValue({ name: 'B', minTime: '03:00', maxTime: '04:00' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(false);
+    expect(component.editingCorralId).toBeNull();
+  });
+
+  it('onSubmit() in edit mode should flag overlap when new range conflicts with another corral', () => {
+    // CORRAL_A has null minTime so no overlap; add a third corral first, then overlap it
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    // CORRAL_B occupies [03:00, 04:00). Try to resize it to overlap CORRAL_A's maxTime window.
+    // CORRAL_A.maxTime = 'PT10800S' = 03:00; minTime = null → skipped in overlap.
+    // Add a concrete corral that occupies [01:00, 02:00) so CORRAL_B can overlap it.
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'New', maxCapacity: 0, minTime: '01:00', maxTime: '02:00' });
+    component.onSubmit();
+    // Now edit CORRAL_B and push its range into [01:30, 04:00) — overlaps [01:00, 02:00)
+    component.editCorral(CORRAL_B);
+    component.corralForm.patchValue({ name: 'B', minTime: '01:30', maxTime: '04:00' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(true);
+  });
 });
 
 // ── timeRangeValidator (pure unit, no TestBed) ──────────────────────────────

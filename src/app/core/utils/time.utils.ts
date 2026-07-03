@@ -1,4 +1,13 @@
 /**
+ * Converts total seconds back to 'HH:mm' display format for form pre-population.
+ */
+export function secondsToTimeString(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
  * Parses 'HH:mm' or 'HH:mm:ss' into total seconds.
  * Returns null for empty input, wrong segment count, non-numeric parts,
  * or out-of-range minutes / seconds (> 59).

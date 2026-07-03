@@ -311,9 +311,9 @@ Computed signals:
 
 A11y: `role="progressbar"` with `aria-valuenow/min/max`; `aria-label` on all badges and drag handle.
 
-### Slide-over Panel — Nuevo Corral (`EventLogisticsComponent`)
+### Slide-over Panel — Corral CRUD (`EventLogisticsComponent`)
 
-A fixed `<aside role="dialog" aria-modal="true">` always present in the DOM, translated off-screen when closed. Uses CSS `translate-x-full` ↔ `translate-x-0` transitions (300 ms ease-in-out) driven by the `isSidePanelOpen` signal. A `bg-black/50` backdrop rendered via `@if (isSidePanelOpen())` calls `closePanel()` on click.
+A fixed `<aside role="dialog" aria-modal="true">` always present in the DOM, translated off-screen when closed. Uses CSS `translate-x-full` ↔ `translate-x-0` transitions (300 ms ease-in-out) driven by the `isSidePanelOpen` signal. A `bg-black/50` backdrop rendered via `@if (isSidePanelOpen())` calls `closePanel()` on click. The panel title and submit button label switch dynamically based on `editingCorralId`.
 
 #### Form controls (`corralForm: FormGroup`)
 
@@ -334,18 +334,29 @@ Cross-field validator applied at the `FormGroup` level. Fires only when both `mi
 
 #### Cross-collection overlap validation (`checkTimeOverlap`)
 
-`onSubmit()` performs a second check before mutating the signal: if both `minTime` and `maxTime` are provided, it calls `checkTimeOverlap(newMinSec, newMaxSec, corrals())` from `time.utils.ts`. The function iterates all existing corrals and tests for half-open interval overlap: `newMin < existMax && newMax > existMin`. Boundary touching (a new range that starts exactly at an existing range's end) is **not** an overlap. Corrals with a null `minTime` or `maxTime` are skipped. On overlap, `corralForm.setErrors({ overlap: true })` is called and submission is blocked; an `aria-live="assertive"` error paragraph appears in the HTML.
+`onSubmit()` performs a second check before mutating the signal: if both `minTime` and `maxTime` are provided, it calls `checkTimeOverlap(newMinSec, newMaxSec, otherCorrals)` from `time.utils.ts`. In **edit mode**, the corral being edited is excluded from `otherCorrals` — its own range must not conflict with itself. Boundary touching is not an overlap. Corrals with a null bound are skipped. On conflict, `corralForm.setErrors({ overlap: true })` blocks submission with an `aria-live="assertive"` error.
 
-#### `openPanel()` / `closePanel()` / `onSubmit()`
+#### Edit / Delete actions (per-row hover buttons)
 
-- `openPanel()` resets the form to clean defaults before opening — prevents stale data if the user closes without saving.
-- `onSubmit()` guards on `corralForm.invalid`, then on cross-collection overlap. When both pass, constructs a `CorralDetail` object:
-  - `corralId`: `crypto.randomUUID()`
-  - `order`: `corrals().length + 1`
-  - `minTime` / `maxTime`: converted via `timeStringToIso8601()` → `null` if empty
-  - `maleBaseTime` / `femaleBaseTime`: converted via `timeStringToIso8601()` → `'PT0S'` if empty
-  - `assignedPacers`: `[]`
-  - Then mutates the signal: `corrals.update(list => [...list, newCorral])`
+Each corral row wraps `<app-corral-card>` inside a `group/row` container. Two icon buttons appear on `group-hover/row:opacity-100` via Tailwind:
+
+| Button | Color on hover | Action |
+|---|---|---|
+| Edit (pencil icon) | `text-cyan-400` | `editCorral(corral)` |
+| Delete (trash icon) | `text-red-400` | `deleteCorral(corral.corralId)` |
+
+Both carry `aria-label="[action] corral [name]"` for screen-reader context.
+
+#### `openPanel()` / `closePanel()` / `editCorral()` / `deleteCorral()` / `onSubmit()`
+
+- `openPanel()` clears `editingCorralId = null` and resets the form — always enters create mode.
+- `closePanel()` clears `editingCorralId = null`.
+- `editCorral(corral)` sets `editingCorralId`, converts each ISO 8601 field → `HH:mm` via `isoToSeconds` + `secondsToTimeString`, calls `corralForm.reset()` with the pre-populated values, and opens the panel.
+- `deleteCorral(id)` filters the `corrals` signal. If `editingCorralId === id`, calls `closePanel()` to avoid a stale edit session pointing at a deleted corral.
+- `onSubmit()`:
+  - **Create mode** (`editingCorralId === null`): constructs a full `CorralDetail` with `crypto.randomUUID()` and appends it via `corrals.update(list => [...list, newCorral])`.
+  - **Edit mode** (`editingCorralId !== null`): maps the signal — immutable spread of the matched corral with updated fields. `corralId`, `order`, and `assignedPacers` are preserved unchanged.
+  - Both modes run `checkTimeOverlap` against `otherCorrals` before mutating.
 
 ### `LogisticsService` (`src/app/core/services/logistics.service.ts`)
 
@@ -409,6 +420,7 @@ All time conversion logic extracted here to eliminate duplication across the log
 
 | Function | Signature | Description |
 |---|---|---|
+| `secondsToTimeString(totalSeconds)` | `(number) → string` | Converts total seconds → `HH:mm` for form pre-population on edit. |
 | `timeToSeconds(timeString)` | `(string) → number \| null` | Parses `HH:mm` or `HH:mm:ss` into total seconds. Returns `null` for empty, wrong segment count, non-numeric, or out-of-range values (minutes/seconds > 59). |
 | `timeStringToIso8601(timeString)` | `(string) → string \| null` | Wraps `timeToSeconds` — returns `PT<n>S` or `null`. |
 | `isoToSeconds(duration)` | `(string \| null \| undefined) → number \| null` | Parses `PT<n>S`, `PT1H30M`, etc. into total seconds. Returns `null` for null, empty, or unrecognised formats. |
@@ -464,8 +476,8 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 | `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 | `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
-| `time.utils.spec.ts` | `timeToSeconds` (9), `timeStringToIso8601` (9), `isoToSeconds` (9), `checkTimeOverlap` (14 — empty list, before, after, boundary touch ×2, starts inside, ends inside, fully contains, contained, partial bounds ×3, multi-corral overlap, multi-corral clear), `parseIsoDuration` (10) = **51 cases** |
-| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index, panel open/close/reset, CSS translate classes, form validity, `onSubmit` close/no-close, `onSubmit` signal mutation, ISO 8601 mapping, null minTime, `timeRangeInvalid` guard, maleBaseTime/femaleBaseTime ISO 8601, PT0S defaults, overlap blocks mutation + sets error, no-overlap proceeds, empty minTime skips check, empty maxTime skips check (46 cases) · `timeRangeValidator` standalone: empty/partial/valid/equal/invalid/unparseable/seconds-precision/zero-duration edge case (10 cases) |
+| `time.utils.spec.ts` | `secondsToTimeString` (7 — zero, 1h, 1h30m, 3h, padding, trailing seconds), `timeToSeconds` (9), `timeStringToIso8601` (9), `isoToSeconds` (9), `checkTimeOverlap` (14), `parseIsoDuration` (10) = **58 cases** |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, CTA, `getStatusMeta`, `onDrop` reorder + no-op, panel open/close/reset, CSS translate, form validity, `onSubmit` create (close/no-close, signal mutation, ISO 8601 mapping, null minTime, timeRangeInvalid, maleBaseTime/femaleBaseTime, PT0S defaults, overlap, no-overlap, partial range ×2), `deleteCorral` (removes from signal, closes panel on editing ID match, no-op on other ID), `editCorral` (sets ID, opens panel, patches name/minTime/maxTime/null minTime), `onSubmit` edit mode (updates name, preserves count, clears ID, no self-overlap, overlap with others) = **67 cases** · `timeRangeValidator` standalone (10 cases) |
 | `logistics.service.spec.ts` | HTTP tests only — `getEventDetails` GET URL + 200 + 404/500, `getCorrals` GET URL + 404→empty + 500, `getLogisticsEvents` default + custom params (pure utility tests moved to `time.utils.spec.ts`) |
 
 ---
@@ -500,6 +512,12 @@ Unit tests use Vitest + `HttpTestingController`.
 - `onSubmit()` in `EventLogisticsComponent` mutates only the local `corrals` signal — no API call yet. The new `CorralDetail` gets `maleBaseTime`/`femaleBaseTime` from the form, falling back to `'PT0S'`.
 - `crypto.randomUUID()` generates the temporary `corralId` for optimistic local state — guaranteed unique per session, replaced by the backend-assigned ID when the save endpoint is wired.
 - `order` is assigned as `corrals().length + 1` at submit time — reflects the append-to-bottom position; will be reconciled against the backend response when the POST is added.
+- `editingCorralId: string | null` drives the create vs. edit branch in `onSubmit()` and is cleared by both `openPanel()` and `closePanel()` — a single source of truth for the panel mode.
+- `editCorral()` uses `isoToSeconds` + `secondsToTimeString` to convert stored ISO 8601 → `HH:mm` for the form inputs; this is the exact inverse path of `onSubmit()`'s `timeStringToIso8601` conversion.
+- The overlap check in edit mode passes `otherCorrals` (current signal minus the editing corral) instead of the full list — without this exclusion, every edit of a corral with a time window would immediately self-conflict.
+- `deleteCorral()` calls `closePanel()` (which also clears `editingCorralId`) when the deleted corral matches the one being edited — prevents a stale edit session referencing a non-existent corral.
+- Edit-mode `onSubmit()` uses `list.map()` with an immutable spread (`{ ...c, ...fields }`) — `corralId`, `order`, and `assignedPacers` are preserved; Angular's signal diffing detects the new array reference and re-renders only the changed card.
+- Hover-reveal action buttons use Tailwind `group/row` + `group-hover/row:opacity-100` — buttons are always in the DOM (accessible by keyboard Tab), only visually hidden until hover; this avoids layout shift and maintains focus-visible ring behavior.
 - `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.
 - `eventsPage` is a writable `signal<EventsPage>` rather than `toSignal()` — necessary for `signal.update()` in the optimistic publish path.
 - `EventService.getEvents` handles both `SpringPage<T>` and `T[]` responses via `Array.isArray` — plain arrays are sliced client-side to preserve pagination UX.

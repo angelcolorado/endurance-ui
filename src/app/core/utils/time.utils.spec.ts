@@ -1,4 +1,16 @@
-import { checkTimeOverlap, isoToSeconds, parseIsoDuration, timeStringToIso8601, timeToSeconds } from './time.utils';
+import { checkTimeOverlap, isoToSeconds, parseIsoDuration, secondsToTimeString, timeStringToIso8601, timeToSeconds } from './time.utils';
+
+// ── secondsToTimeString ──────────────────────────────────────────────────────
+
+describe('secondsToTimeString', () => {
+  it('converts 0 to "00:00"',      () => expect(secondsToTimeString(0)).toBe('00:00'));
+  it('converts 3600 to "01:00"',   () => expect(secondsToTimeString(3600)).toBe('01:00'));
+  it('converts 5400 to "01:30"',   () => expect(secondsToTimeString(5400)).toBe('01:30'));
+  it('converts 10800 to "03:00"',  () => expect(secondsToTimeString(10800)).toBe('03:00'));
+  it('converts 12600 to "03:30"',  () => expect(secondsToTimeString(12600)).toBe('03:30'));
+  it('pads hours below 10',        () => expect(secondsToTimeString(1800)).toBe('00:30'));
+  it('ignores remaining seconds',  () => expect(secondsToTimeString(3661)).toBe('01:01'));
+});
 
 // ── timeToSeconds ────────────────────────────────────────────────────────────
 
