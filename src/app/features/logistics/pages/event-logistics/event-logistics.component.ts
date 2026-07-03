@@ -10,7 +10,8 @@ import {
   Validators,
 } from '@angular/forms';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
-import { LogisticsService, timeStringToIso8601 } from '../../../../core/services/logistics.service';
+import { LogisticsService } from '../../../../core/services/logistics.service';
+import { checkTimeOverlap, timeToSeconds, timeStringToIso8601 } from '../../../../core/utils/time.utils';
 import {
   CorralDetail,
   LogisticsEventDetail,
@@ -28,21 +29,10 @@ export const timeRangeValidator: ValidatorFn = (group: AbstractControl) => {
   const min = group.get('minTime')?.value as string | null;
   const max = group.get('maxTime')?.value as string | null;
   if (!min?.trim() || !max?.trim()) return null;
-
-  const toSeconds = (t: string): number | null => {
-    const parts = t.trim().split(':');
-    if (parts.length < 2) return null;
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    const s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
-    if ([h, m, s].some(n => isNaN(n))) return null;
-    return h * 3600 + m * 60 + s;
-  };
-
-  const minSec = toSeconds(min);
-  const maxSec = toSeconds(max);
+  const minSec = timeToSeconds(min);
+  const maxSec = timeToSeconds(max);
   if (minSec === null || maxSec === null) return null;
-  return minSec > maxSec ? { timeRangeInvalid: true } : null;
+  return minSec >= maxSec ? { timeRangeInvalid: true } : null;
 };
 
 @Component({
@@ -63,12 +53,14 @@ export class EventLogisticsComponent {
 
   readonly corralForm = this.fb.group(
     {
-      name:          ['', Validators.required],
-      minTime:       [''],
-      maxTime:       [''],
-      maxCapacity:   [0, [Validators.required, Validators.min(0)]],
-      isParaAthlete: [false],
-      isRestricted:  [false],
+      name:            ['', Validators.required],
+      minTime:         [''],
+      maxTime:         [''],
+      maxCapacity:     [0, [Validators.required, Validators.min(0)]],
+      isParaAthlete:   [false],
+      isRestricted:    [false],
+      maleBaseTime:    [''],
+      femaleBaseTime:  [''],
     },
     { validators: timeRangeValidator },
   );
@@ -112,6 +104,7 @@ export class EventLogisticsComponent {
     this.corralForm.reset({
       name: '', minTime: '', maxTime: '',
       maxCapacity: 0, isParaAthlete: false, isRestricted: false,
+      maleBaseTime: '', femaleBaseTime: '',
     });
     this.isSidePanelOpen.set(true);
   }
@@ -123,21 +116,30 @@ export class EventLogisticsComponent {
   onSubmit(): void {
     if (this.corralForm.invalid) return;
 
-    const { name, minTime, maxTime, maxCapacity, isParaAthlete, isRestricted } =
-      this.corralForm.getRawValue();
+    const { name, minTime, maxTime, maxCapacity, isParaAthlete, isRestricted,
+            maleBaseTime, femaleBaseTime } = this.corralForm.getRawValue();
+
+    const newMinSec = minTime ? timeToSeconds(minTime) : null;
+    const newMaxSec = maxTime ? timeToSeconds(maxTime) : null;
+
+    if (newMinSec !== null && newMaxSec !== null &&
+        checkTimeOverlap(newMinSec, newMaxSec, this.corrals())) {
+      this.corralForm.setErrors({ overlap: true });
+      return;
+    }
 
     const newCorral: CorralDetail = {
-      corralId:          crypto.randomUUID(),
-      name:              name!,
-      order:             this.corrals().length + 1,
-      maleBaseTime:      'PT0S',
-      femaleBaseTime:    'PT0S',
-      minTime:           minTime ? (timeStringToIso8601(minTime) ?? null) : null,
-      maxTime:           maxTime ? (timeStringToIso8601(maxTime) ?? null) : null,
-      maxCapacity:       maxCapacity ?? 0,
+      corralId:            crypto.randomUUID(),
+      name:                name!,
+      order:               this.corrals().length + 1,
+      maleBaseTime:        (maleBaseTime   ? timeStringToIso8601(maleBaseTime)   : null) ?? 'PT0S',
+      femaleBaseTime:      (femaleBaseTime ? timeStringToIso8601(femaleBaseTime) : null) ?? 'PT0S',
+      minTime:             minTime  ? (timeStringToIso8601(minTime)  ?? null) : null,
+      maxTime:             maxTime  ? (timeStringToIso8601(maxTime)  ?? null) : null,
+      maxCapacity:         maxCapacity ?? 0,
       isParaAthleteCorral: isParaAthlete ?? false,
-      isRestricted:      isRestricted ?? false,
-      assignedPacers:    [],
+      isRestricted:        isRestricted  ?? false,
+      assignedPacers:      [],
     };
 
     this.corrals.update(list => [...list, newCorral]);

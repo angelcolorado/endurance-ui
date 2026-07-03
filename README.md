@@ -325,19 +325,25 @@ A fixed `<aside role="dialog" aria-modal="true">` always present in the DOM, tra
 | `maxCapacity` | `number` | `required`, `min(0)` |
 | `isParaAthlete` | `boolean` | — |
 | `isRestricted` | `boolean` | — |
+| `maleBaseTime` | `string` | optional — format `HH:mm` or `HH:mm:ss` |
+| `femaleBaseTime` | `string` | optional — format `HH:mm` or `HH:mm:ss` |
 
 #### `timeRangeValidator: ValidatorFn` (exported, module-level)
 
-Cross-field validator applied at the `FormGroup` level. Fires only when both `minTime` and `maxTime` have a value; converts both to total seconds via an inline `toSeconds()` helper and returns `{ timeRangeInvalid: true }` when `minSec > maxSec`. Returns `null` (valid) when either field is empty or when neither parses to a number. A `role="alert" aria-live="polite"` error message with a warning icon appears below the time grid when the error is active; both time inputs gain `border-red-500`.
+Cross-field validator applied at the `FormGroup` level. Fires only when both `minTime` and `maxTime` have a value; converts both to total seconds via `timeToSeconds()` and returns `{ timeRangeInvalid: true }` when `minSec >= maxSec` (strictly positive window required — equal times produce a zero-duration corral and are rejected). Returns `null` (valid) when either field is empty or unparseable. A `role="alert" aria-live="polite"` error message with a warning icon appears below the time grid when the error is active; both time inputs gain `border-red-500`.
+
+#### Cross-collection overlap validation (`checkTimeOverlap`)
+
+`onSubmit()` performs a second check before mutating the signal: if both `minTime` and `maxTime` are provided, it calls `checkTimeOverlap(newMinSec, newMaxSec, corrals())` from `time.utils.ts`. The function iterates all existing corrals and tests for half-open interval overlap: `newMin < existMax && newMax > existMin`. Boundary touching (a new range that starts exactly at an existing range's end) is **not** an overlap. Corrals with a null `minTime` or `maxTime` are skipped. On overlap, `corralForm.setErrors({ overlap: true })` is called and submission is blocked; an `aria-live="assertive"` error paragraph appears in the HTML.
 
 #### `openPanel()` / `closePanel()` / `onSubmit()`
 
 - `openPanel()` resets the form to clean defaults before opening — prevents stale data if the user closes without saving.
-- `onSubmit()` guards on `corralForm.invalid` (covers both field-level and cross-field errors). When valid, constructs a `CorralDetail` object:
+- `onSubmit()` guards on `corralForm.invalid`, then on cross-collection overlap. When both pass, constructs a `CorralDetail` object:
   - `corralId`: `crypto.randomUUID()`
   - `order`: `corrals().length + 1`
-  - `minTime` / `maxTime`: converted via `timeStringToIso8601()` → `null` if the field is empty
-  - `maleBaseTime` / `femaleBaseTime`: `'PT0S'` (placeholder until a dedicated input is added)
+  - `minTime` / `maxTime`: converted via `timeStringToIso8601()` → `null` if empty
+  - `maleBaseTime` / `femaleBaseTime`: converted via `timeStringToIso8601()` → `'PT0S'` if empty
   - `assignedPacers`: `[]`
   - Then mutates the signal: `corrals.update(list => [...list, newCorral])`
 
@@ -349,12 +355,14 @@ Cross-field validator applied at the `FormGroup` level. Fires only when both `mi
 | `getEventDetails(eventId)` | `GET /api/v1/logistics/events/:id` | `Observable<LogisticsEventDetail>` | Propagates (404 = event not found) |
 | `getCorrals(eventId)` | `GET /api/v1/logistics/events/:id/corrals` | `Observable<CorralsResponse>` | 404 → `of({ corralsByDistance: {} })` |
 
-**Exported pure utilities:**
+**Exported pure utilities (re-exported from `time.utils.ts` for backward compatibility):**
 
 | Function | Signature | Description |
 |---|---|---|
 | `parseIsoDuration(duration)` | `(string \| null \| undefined) → string` | Converts `PT10800S`, `PT1H30M` → `"3:00h"`. Returns `"--"` for null / empty / `PT0S`. |
 | `timeStringToIso8601(timeString)` | `(string) → string \| null` | Converts `HH:mm` or `HH:mm:ss` → `PT<n>S`. Returns `null` for empty, bad format, or out-of-range values (minutes > 59, seconds > 59). |
+
+> These functions are defined in `src/app/core/utils/time.utils.ts` and re-exported from `LogisticsService` via `export { ... }` to preserve existing import paths.
 
 ---
 
@@ -390,6 +398,24 @@ On successful login, redirects to `/dashboard`.
 | other | An unexpected error occurred. |
 
 WCAG 2.1 compliant: `aria-required`, `aria-invalid`, `aria-describedby` on all inputs; `role="alert"` + `aria-live="assertive"` on error regions.
+
+---
+
+## Core Utilities (`src/app/core/utils/`)
+
+### `time.utils.ts` — canonical time helpers
+
+All time conversion logic extracted here to eliminate duplication across the logistics service and component validators.
+
+| Function | Signature | Description |
+|---|---|---|
+| `timeToSeconds(timeString)` | `(string) → number \| null` | Parses `HH:mm` or `HH:mm:ss` into total seconds. Returns `null` for empty, wrong segment count, non-numeric, or out-of-range values (minutes/seconds > 59). |
+| `timeStringToIso8601(timeString)` | `(string) → string \| null` | Wraps `timeToSeconds` — returns `PT<n>S` or `null`. |
+| `isoToSeconds(duration)` | `(string \| null \| undefined) → number \| null` | Parses `PT<n>S`, `PT1H30M`, etc. into total seconds. Returns `null` for null, empty, or unrecognised formats. |
+| `checkTimeOverlap(newMin, newMax, corrals)` | `(number, number, {minTime, maxTime}[]) → boolean` | Half-open interval `[inclusive, exclusive)` overlap detection across a collection of corrals. Skips corrals missing either bound. |
+| `parseIsoDuration(duration)` | `(string \| null \| undefined) → string` | Human-readable display — `"3:00h"`, `"1:30h"`, `"--"`. |
+
+`LogisticsService` re-exports `parseIsoDuration` and `timeStringToIso8601` via `export { ... }` to preserve existing import paths. `CorralCardComponent` imports `parseIsoDuration` directly from `time.utils`.
 
 ---
 
@@ -438,8 +464,9 @@ Unit tests use Vitest + `HttpTestingController`.
 | `event-create.component.spec.ts` | futureDateValidator, enum constants (incl. CUSTOM), FormArray init, add/remove offering, CUSTOM conditional validators, name & raceDate validators, file selection, onSubmit guards, HTTP happy path, error, isLoading, DOM button state (39 cases) |
 | `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
 | `logistics-event-list.component.spec.ts` | create, loading state, loaded transition, error state, `getStatusMeta` label, row count per event, openCorral badge visibility, empty state, routerLink target |
-| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index, panel open/close/reset, CSS translate classes, form validity, `onSubmit` close/no-close, `onSubmit` signal mutation, ISO 8601 mapping, null minTime, `timeRangeInvalid` guard (38 cases) · `timeRangeValidator` standalone describe: empty/partial/valid/equal/invalid/unparseable/seconds-precision (9 cases) |
-| `logistics.service.spec.ts` | `parseIsoDuration` (10 cases), `timeStringToIso8601` (9 cases — HH:mm, HH:mm:ss, zero, seconds precision, empty, bad format, partial, OOB minutes/seconds), `getEventDetails` GET URL + 200 + 404/500 propagation, `getCorrals` GET URL + 404→empty + 500 propagation, `getLogisticsEvents` default + custom params |
+| `time.utils.spec.ts` | `timeToSeconds` (9), `timeStringToIso8601` (9), `isoToSeconds` (9), `checkTimeOverlap` (14 — empty list, before, after, boundary touch ×2, starts inside, ends inside, fully contains, contained, partial bounds ×3, multi-corral overlap, multi-corral clear), `parseIsoDuration` (10) = **51 cases** |
+| `event-logistics.component.spec.ts` | create, loading/loaded/error states, 404→error, header name + status badge, card count, empty-state heading, "+ Crear Primer Corral" CTA, `getStatusMeta` label, `onDrop` reorder, `onDrop` no-op same-index, panel open/close/reset, CSS translate classes, form validity, `onSubmit` close/no-close, `onSubmit` signal mutation, ISO 8601 mapping, null minTime, `timeRangeInvalid` guard, maleBaseTime/femaleBaseTime ISO 8601, PT0S defaults, overlap blocks mutation + sets error, no-overlap proceeds, empty minTime skips check, empty maxTime skips check (46 cases) · `timeRangeValidator` standalone: empty/partial/valid/equal/invalid/unparseable/seconds-precision/zero-duration edge case (10 cases) |
+| `logistics.service.spec.ts` | HTTP tests only — `getEventDetails` GET URL + 200 + 404/500, `getCorrals` GET URL + 404→empty + 500, `getLogisticsEvents` default + custom params (pure utility tests moved to `time.utils.spec.ts`) |
 
 ---
 
@@ -465,7 +492,12 @@ Unit tests use Vitest + `HttpTestingController`.
 - `parseIsoDuration` and `timeStringToIso8601` are pure exported functions — unit-testable in isolation without `TestBed`.
 - `timeStringToIso8601` is the inverse of `parseIsoDuration` — used by `onSubmit()` to convert form input (`HH:mm`) to the ISO 8601 duration contract expected by the backend.
 - `timeRangeValidator` is exported at module level (not a method) so it can be unit-tested in a standalone `describe` block without triggering the `TestBed` / HTTP mock lifecycle of the component suite.
-- `onSubmit()` in `EventLogisticsComponent` mutates only the local `corrals` signal — no API call yet. The new `CorralDetail` gets `maleBaseTime: 'PT0S'` and `femaleBaseTime: 'PT0S'` as placeholders; dedicated inputs for those fields are deferred to the next milestone.
+- `timeRangeValidator` uses `minSec >= maxSec` (not `>`): equal times are invalid because a zero-duration corral bypasses overlap detection — a corral `[1:05, 1:05)` has zero width and would never conflict with anything, allowing silent data corruption.
+- All time-conversion logic lives in `src/app/core/utils/time.utils.ts` — extracted from `LogisticsService` to eliminate duplication between the service, the `timeRangeValidator`, and `onSubmit()`. The service re-exports the two functions needed by existing consumers.
+- `checkTimeOverlap` uses half-open interval semantics `[inclusive, exclusive)`: `newMin < existMax && newMax > existMin`. Boundary touching (a corral starting exactly where another ends) is **not** an overlap — runners from back-to-back time windows should both be admissible.
+- The `overlap` error is set on the `FormGroup` (not a field control) after the `corralForm.invalid` guard — prevents double-error states and ensures the check only runs when the form is structurally valid.
+- `isoToSeconds` parses `PT<n>H<m>M<s>S` ISO 8601 durations from stored corrals; `timeToSeconds` parses `HH:mm` form inputs. Both are needed because different layers use different time representations.
+- `onSubmit()` in `EventLogisticsComponent` mutates only the local `corrals` signal — no API call yet. The new `CorralDetail` gets `maleBaseTime`/`femaleBaseTime` from the form, falling back to `'PT0S'`.
 - `crypto.randomUUID()` generates the temporary `corralId` for optimistic local state — guaranteed unique per session, replaced by the backend-assigned ID when the save endpoint is wired.
 - `order` is assigned as `corrals().length + 1` at submit time — reflects the append-to-bottom position; will be reconciled against the backend response when the POST is added.
 - `PageState` discriminated union (`loading | loaded | error`) is the standard state container for all data-fetching Smart components.

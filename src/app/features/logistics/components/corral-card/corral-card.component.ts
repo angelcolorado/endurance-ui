@@ -1,7 +1,7 @@
 import { Component, computed, input } from '@angular/core';
 import { CdkDragHandle } from '@angular/cdk/drag-drop';
 import { CorralDetail } from '../../../../core/models/logistics.model';
-import { parseIsoDuration } from '../../../../core/services/logistics.service';
+import { parseIsoDuration } from '../../../../core/utils/time.utils';
 
 @Component({
   selector: 'app-corral-card',

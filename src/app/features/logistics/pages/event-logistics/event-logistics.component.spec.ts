@@ -196,10 +196,11 @@ describe('EventLogisticsComponent', () => {
 
   it('openPanel() should reset the form', () => {
     httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
-    component.corralForm.patchValue({ name: 'Dirty value', maxCapacity: 999 });
+    component.corralForm.patchValue({ name: 'Dirty value', maxCapacity: 999, maleBaseTime: '01:30' });
     component.openPanel();
     expect(component.corralForm.value.name).toBe('');
     expect(component.corralForm.value.maxCapacity).toBe(0);
+    expect(component.corralForm.value.maleBaseTime).toBe('');
   });
 
   it('panel aside should have translate-x-full class when closed', () => {
@@ -291,6 +292,85 @@ describe('EventLogisticsComponent', () => {
     component.onSubmit();
     expect(component.corrals().length).toBe(countBefore);
   });
+
+  it('onSubmit() should convert maleBaseTime to ISO 8601', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Elite', maxCapacity: 0, maleBaseTime: '03:00' });
+    component.onSubmit();
+    expect(component.corrals().at(-1)!.maleBaseTime).toBe('PT10800S');
+  });
+
+  it('onSubmit() should convert femaleBaseTime to ISO 8601', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Elite', maxCapacity: 0, femaleBaseTime: '03:30' });
+    component.onSubmit();
+    expect(component.corrals().at(-1)!.femaleBaseTime).toBe('PT12600S');
+  });
+
+  it('onSubmit() should default maleBaseTime to "PT0S" when field is empty', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Elite', maxCapacity: 0, maleBaseTime: '' });
+    component.onSubmit();
+    expect(component.corrals().at(-1)!.maleBaseTime).toBe('PT0S');
+  });
+
+  it('onSubmit() should default femaleBaseTime to "PT0S" when field is empty', () => {
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Elite', maxCapacity: 0, femaleBaseTime: '' });
+    component.onSubmit();
+    expect(component.corrals().at(-1)!.femaleBaseTime).toBe('PT0S');
+  });
+
+  // ── onSubmit() — overlap detection ──────────────────────────────────────────
+  // CORRAL_B covers [PT10800S, PT14400S) = [3:00h, 4:00h)
+
+  it('onSubmit() should set overlap error and NOT mutate signal when times overlap existing corral', () => {
+    // New range 03:30–04:30 overlaps CORRAL_B [03:00–04:00)
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const countBefore = component.corrals().length;
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Overlap', maxCapacity: 0, minTime: '03:30', maxTime: '04:30' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(true);
+    expect(component.corrals().length).toBe(countBefore);
+  });
+
+  it('onSubmit() should proceed normally when times do not overlap any existing corral', () => {
+    // New range 04:00–05:00 starts exactly at CORRAL_B's end — no overlap (exclusive upper bound)
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const countBefore = component.corrals().length;
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'Clear', maxCapacity: 0, minTime: '04:00', maxTime: '05:00' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(false);
+    expect(component.corrals().length).toBe(countBefore + 1);
+  });
+
+  it('onSubmit() should skip overlap check when minTime is empty', () => {
+    // Partial range: no minTime — cannot determine overlap, must not block submission
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const countBefore = component.corrals().length;
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'NoMin', maxCapacity: 0, minTime: '', maxTime: '04:00' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(false);
+    expect(component.corrals().length).toBe(countBefore + 1);
+  });
+
+  it('onSubmit() should skip overlap check when maxTime is empty', () => {
+    // Partial range: no maxTime — cannot determine overlap, must not block submission
+    httpMock.expectOne(API_URL).flush(MOCK_DETAIL);
+    const countBefore = component.corrals().length;
+    component.openPanel();
+    component.corralForm.patchValue({ name: 'NoMax', maxCapacity: 0, minTime: '03:30', maxTime: '' });
+    component.onSubmit();
+    expect(component.corralForm.hasError('overlap')).toBe(false);
+    expect(component.corrals().length).toBe(countBefore + 1);
+  });
 });
 
 // ── timeRangeValidator (pure unit, no TestBed) ──────────────────────────────
@@ -304,7 +384,10 @@ describe('timeRangeValidator', () => {
   it('returns null when only minTime is set',           () => expect(make('01:00', '').errors).toBeNull());
   it('returns null when only maxTime is set',           () => expect(make('', '03:00').errors).toBeNull());
   it('returns null when minTime < maxTime',             () => expect(make('01:00', '03:00').errors).toBeNull());
-  it('returns null when minTime === maxTime',           () => expect(make('02:00', '02:00').errors).toBeNull());
+  it('returns { timeRangeInvalid } when minTime === maxTime (zero-duration corral not allowed)',
+    () => expect(make('02:00', '02:00').errors).toEqual({ timeRangeInvalid: true }));
+  it('returns { timeRangeInvalid } for "01:05"/"01:05" (edge case that bypassed overlap check)',
+    () => expect(make('01:05', '01:05').errors).toEqual({ timeRangeInvalid: true }));
   it('returns { timeRangeInvalid } when minTime > maxTime', () =>
     expect(make('04:00', '02:00').errors).toEqual({ timeRangeInvalid: true }));
   it('returns null when values are not parseable (graceful)', () =>
